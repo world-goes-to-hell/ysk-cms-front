@@ -12,7 +12,11 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@ysk-cms/shared': fileURLToPath(new URL('../../packages/shared/src', import.meta.url)),
     },
+  },
+  server: {
+    port: 5173,
   },
 })
