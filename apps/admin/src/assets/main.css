@@ -1,5 +1,76 @@
 @import './base.css';
 
+/* ==================== 테마 CSS 변수 ==================== */
+:root,
+:root.light {
+  /* 배경 */
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f1f5f9;
+  --bg-hover: #f1f5f9;
+
+  /* 텍스트 */
+  --text-primary: #1a1a2e;
+  --text-secondary: #64748b;
+  --text-tertiary: #94a3b8;
+
+  /* 보더 */
+  --border-color: #e2e8f0;
+  --border-light: #f1f5f9;
+
+  /* 액센트 */
+  --accent-primary: #6366f1;
+  --accent-secondary: #818cf8;
+
+  /* 카드 그림자 */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.1);
+
+  /* 상태 색상 */
+  --success-bg: #ecfdf5;
+  --success-text: #10b981;
+  --danger-bg: #fef2f2;
+  --danger-text: #ef4444;
+}
+
+:root.dark {
+  /* 배경 */
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --bg-hover: #334155;
+
+  /* 텍스트 */
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
+
+  /* 보더 */
+  --border-color: #334155;
+  --border-light: #1e293b;
+
+  /* 액센트 */
+  --accent-primary: #818cf8;
+  --accent-secondary: #a5b4fc;
+
+  /* 카드 그림자 */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.5);
+
+  /* 상태 색상 */
+  --success-bg: rgba(16, 185, 129, 0.15);
+  --success-text: #34d399;
+  --danger-bg: rgba(239, 68, 68, 0.15);
+  --danger-text: #f87171;
+}
+
+/* ==================== 다크모드 전환 애니메이션 ==================== */
+html {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
 #app {
   width: 100%;
   min-height: 100vh;
@@ -8,4 +79,77 @@
 a {
   text-decoration: none;
   color: inherit;
+}
+
+/* ==================== Element Plus 오버라이드 ==================== */
+/* 로딩 오버레이 다크모드 대응 */
+.el-loading-mask {
+  background-color: var(--bg-primary) !important;
+  opacity: 0.9;
+  transition: background-color 0.3s ease;
+}
+
+.el-loading-spinner .circular {
+  stroke: var(--accent-primary) !important;
+}
+
+.el-loading-spinner .el-loading-text {
+  color: var(--text-secondary) !important;
+}
+
+/* 다이얼로그 다크모드 대응 */
+:root.dark .el-dialog {
+  background-color: var(--bg-secondary);
+}
+
+:root.dark .el-dialog__title {
+  color: var(--text-primary);
+}
+
+:root.dark .el-dialog__body {
+  color: var(--text-secondary);
+}
+
+:root.dark .el-input__wrapper {
+  background-color: var(--bg-tertiary);
+  box-shadow: 0 0 0 1px var(--border-color) inset;
+}
+
+:root.dark .el-input__inner {
+  color: var(--text-primary);
+}
+
+:root.dark .el-input__inner::placeholder {
+  color: var(--text-tertiary);
+}
+
+:root.dark .el-form-item__label {
+  color: var(--text-primary);
+}
+
+/* 드롭다운 메뉴 다크모드 */
+:root.dark .el-dropdown-menu {
+  background-color: var(--bg-secondary);
+  border-color: var(--border-color);
+}
+
+:root.dark .el-dropdown-menu__item {
+  color: var(--text-primary);
+}
+
+:root.dark .el-dropdown-menu__item:hover {
+  background-color: var(--bg-tertiary);
+}
+
+/* 버튼 다크모드 */
+:root.dark .el-button--default {
+  background-color: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+:root.dark .el-button--default:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
 }
