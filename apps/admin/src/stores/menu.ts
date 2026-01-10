@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { getActiveMenuTree } from '@/api/menu'
+import { registerDynamicRoutes } from '@/router'
 import { useAuthStore } from './auth'
 import type { MenuItem } from '@/types/menu'
 
@@ -58,6 +59,11 @@ export const useMenuStore = defineStore('menu', () => {
 
   // URL로 메뉴 찾기
   const findMenuByUrl = (url: string): MenuItem | undefined => {
+    // / 경로는 /dashboard 메뉴와 매칭
+    if (url === '/') {
+      return flatMenus.value.find((menu) => menu.url === '/dashboard') ||
+             flatMenus.value.find((menu) => menu.url === url)
+    }
     return flatMenus.value.find((menu) => menu.url === url)
   }
 
@@ -104,12 +110,11 @@ export const useMenuStore = defineStore('menu', () => {
       menuItems.value = response.data.data
       currentSiteCode.value = targetSiteCode
 
-      // 기본적으로 1레벨 메뉴는 펼쳐두기
-      menuItems.value.forEach((menu) => {
-        if (menu.children?.length) {
-          expandedMenus.value.add(menu.id)
-        }
-      })
+      // 동적 라우트 등록 (새 메뉴가 추가되었을 수 있음)
+      registerDynamicRoutes(menuItems.value)
+
+      // 기본적으로 전체 접기 상태
+      expandedMenus.value.clear()
 
       return { success: true }
     } catch (err: unknown) {

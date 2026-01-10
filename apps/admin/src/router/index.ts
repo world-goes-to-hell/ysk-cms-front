@@ -1,87 +1,87 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
+import { generateRoutesFromMenus } from './dynamicRoutes'
+import type { MenuItem } from '@/types/menu'
+
+// 기본 라우트 (동적 라우트 등록 전에 필요한 최소한의 라우트)
+const baseRoutes: RouteRecordRaw[] = [
+  {
+    path: '/',
+    redirect: '/adm/dashboard',
+  },
+  {
+    path: '/adm',
+    name: 'layout', // 동적 라우트 등록을 위한 이름
+    component: DefaultLayout,
+    meta: { requiresAuth: true },
+    children: [
+      {
+        path: '',
+        redirect: '/adm/dashboard',
+      },
+    ],
+  },
+  {
+    path: '/adm/login',
+    name: 'login',
+    component: () => import('@/views/default/common/login/LoginView.vue'),
+    meta: { title: '로그인', guest: true },
+  },
+]
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  routes: [
-    {
-      path: '/',
-      component: DefaultLayout,
-      meta: { requiresAuth: true },
-      children: [
-        // 메인 사이트 대시보드
-        {
-          path: '',
-          name: 'dashboard',
-          component: () => import('@/views/default/common/DashboardView.vue'),
-          meta: { title: '대시보드', requiresAuth: true },
-        },
-        // 메인 사이트 전용 - 사이트 관리
-        {
-          path: 'sites',
-          name: 'site-management',
-          component: () => import('@/views/default/SiteManagementView.vue'),
-          meta: { title: '사이트 관리', requiresAuth: true },
-        },
-        // 공통 페이지
-        {
-          path: 'users',
-          name: 'users',
-          component: () => import('@/views/default/common/UsersView.vue'),
-          meta: { title: '사용자 관리', requiresAuth: true },
-        },
-        {
-          path: 'contents',
-          name: 'contents',
-          component: () => import('@/views/default/common/ContentsView.vue'),
-          meta: { title: '콘텐츠 관리', requiresAuth: true },
-        },
-        {
-          path: 'settings',
-          name: 'settings',
-          component: () => import('@/views/default/common/SettingsView.vue'),
-          meta: { title: '설정', requiresAuth: true },
-        },
-        // 서브사이트 라우트
-        {
-          path: 'sites/:siteId',
-          children: [
-            {
-              path: 'dashboard',
-              name: 'site-dashboard',
-              component: () => import('@/views/default/common/DashboardView.vue'),
-              meta: { title: '대시보드', requiresAuth: true },
-            },
-            {
-              path: 'users',
-              name: 'site-users',
-              component: () => import('@/views/default/common/UsersView.vue'),
-              meta: { title: '사용자 관리', requiresAuth: true },
-            },
-            {
-              path: 'contents',
-              name: 'site-contents',
-              component: () => import('@/views/default/common/ContentsView.vue'),
-              meta: { title: '콘텐츠 관리', requiresAuth: true },
-            },
-            {
-              path: 'settings',
-              name: 'site-settings',
-              component: () => import('@/views/default/common/SettingsView.vue'),
-              meta: { title: '설정', requiresAuth: true },
-            },
-          ],
-        },
-      ],
-    },
-    {
-      path: '/login',
-      name: 'login',
-      component: () => import('@/views/default/common/LoginView.vue'),
-      meta: { title: '로그인', guest: true },
-    },
-  ],
+  routes: baseRoutes,
 })
+
+// 동적 라우트 등록 상태
+let dynamicRoutesRegistered = false
+
+// 동적 라우트 등록 여부 확인
+export function isDynamicRoutesRegistered(): boolean {
+  return dynamicRoutesRegistered
+}
+
+// 메뉴 데이터로 동적 라우트 등록
+export function registerDynamicRoutes(menus: MenuItem[]) {
+  if (dynamicRoutesRegistered) {
+    console.log('[Router] 동적 라우트가 이미 등록되어 있습니다.')
+    return
+  }
+
+  const dynamicRoutes = generateRoutesFromMenus(menus)
+  console.log('[Router] 동적 라우트 생성:', dynamicRoutes.length, '개')
+
+  // 각 동적 라우트를 DefaultLayout의 children으로 추가
+  dynamicRoutes.forEach((route) => {
+    router.addRoute('layout', route)
+  })
+
+  // 등록되지 않은 페이지 처리 (맨 마지막에)
+  router.addRoute('layout', {
+    path: ':pathMatch(.*)*',
+    name: 'not-registered',
+    component: () => import('@/views/NotRegisteredView.vue'),
+    meta: { title: '페이지 없음' },
+  })
+
+  dynamicRoutesRegistered = true
+  console.log('[Router] 동적 라우트 등록 완료')
+  console.log('[Router] 등록된 라우트:', router.getRoutes().map(r => r.path))
+
+  // 현재 경로를 다시 로드하여 새 라우트 매칭
+  const currentPath = router.currentRoute.value.fullPath
+  if (currentPath && currentPath !== '/') {
+    console.log('[Router] 현재 경로 재로드:', currentPath)
+    router.replace(currentPath)
+  }
+}
+
+// 동적 라우트 초기화 (메뉴 새로고침 시 사용)
+export function resetDynamicRoutes() {
+  dynamicRoutesRegistered = false
+  // 기존 동적 라우트 제거는 복잡하므로, 보통 페이지 새로고침으로 처리
+}
 
 // 네비게이션 가드
 router.beforeEach((to, _from, next) => {
@@ -99,11 +99,31 @@ router.beforeEach((to, _from, next) => {
 
   // 이미 로그인한 사용자가 로그인 페이지 접근 시
   if (to.meta.guest && isAuthenticated) {
-    next({ name: 'dashboard' })
+    next({ path: '/adm/dashboard' })
     return
   }
 
+  // 동적 라우트가 등록되지 않았고, 인증된 사용자가 /adm 하위 페이지에 접근 시
+  // 라우트가 not-registered(catch-all)로 매칭된 경우 경고 로그
+  if (isAuthenticated && to.path.startsWith('/adm') && to.name === 'not-registered') {
+    console.warn('[Router] 동적 라우트가 등록되지 않아 페이지를 찾을 수 없습니다:', to.path)
+    console.warn('[Router] 동적 라우트 등록 상태:', dynamicRoutesRegistered)
+  }
+
   next()
+})
+
+// 네비게이션 완료 후 디버깅 로그
+router.afterEach((to) => {
+  console.log('[Router] ========== 네비게이션 완료 ==========')
+  console.log('[Router] 현재 경로:', to.path)
+  console.log('[Router] 현재 라우트 이름:', to.name)
+  console.log('[Router] 매칭된 라우트 수:', to.matched.length)
+  to.matched.forEach((route, index) => {
+    console.log(`[Router] 매칭[${index}] path:`, route.path)
+    console.log(`[Router] 매칭[${index}] components:`, route.components)
+    console.log(`[Router] 매칭[${index}] components.default:`, route.components?.default)
+  })
 })
 
 export default router

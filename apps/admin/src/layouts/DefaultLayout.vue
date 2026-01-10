@@ -37,9 +37,38 @@ const blueLightTitle = computed(() => {
   return titles[themeStore.blueLight]
 })
 
+// 메뉴가 모두 펼쳐져 있는지 확인
+const isAllExpanded = computed(() => {
+  const countExpandable = (items: MenuItem[]): number => {
+    let count = 0
+    items.forEach((item) => {
+      if (item.children?.length) {
+        count++
+        count += countExpandable(item.children)
+      }
+    })
+    return count
+  }
+  const expandableCount = countExpandable(menuStore.filteredMenus)
+  return expandableCount > 0 && menuStore.expandedMenus.size >= expandableCount
+})
+
+// 전체 펼치기/접기 토글
+const toggleExpandAll = () => {
+  if (isAllExpanded.value) {
+    menuStore.collapseAll()
+  } else {
+    menuStore.expandAll()
+  }
+}
+
 // 현재 경로가 메뉴와 일치하는지 확인
 const isMenuActive = (menu: MenuItem): boolean => {
-  if (menu.url && route.path === menu.url) return true
+  if (menu.url) {
+    // /dashboard URL은 실제로 / 경로로 리다이렉트됨
+    if (menu.url === '/dashboard' && route.path === '/') return true
+    if (route.path === menu.url) return true
+  }
   if (menu.children?.length) {
     return menu.children.some((child) => isMenuActive(child))
   }
@@ -105,6 +134,22 @@ const handleCommand = (command: string) => {
             <span class="logo-subtitle">CMS</span>
           </div>
         </transition>
+      </div>
+
+      <!-- 메뉴 컨트롤 -->
+      <div v-if="!isCollapse && !menuStore.isLoading" class="menu-controls">
+        <button
+          class="menu-control-btn toggle"
+          :class="{ expanded: isAllExpanded }"
+          @click="toggleExpandAll"
+          :title="isAllExpanded ? '전체 접기' : '전체 펼치기'"
+        >
+          <el-icon :size="14">
+            <ArrowUp v-if="isAllExpanded" />
+            <ArrowDown v-else />
+          </el-icon>
+          <span>{{ isAllExpanded ? '전체 접기' : '전체 펼치기' }}</span>
+        </button>
       </div>
 
       <!-- 메뉴 -->
@@ -248,11 +293,12 @@ const handleCommand = (command: string) => {
 </template>
 
 <script lang="ts">
-import { ArrowDown, ArrowRight, User, SwitchButton, Expand, Fold, Bell, HomeFilled, Document, Setting, Sunny, Moon, Monitor, View, Loading } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowUp, ArrowRight, User, SwitchButton, Expand, Fold, Bell, HomeFilled, Document, Setting, Sunny, Moon, Monitor, View, Loading } from '@element-plus/icons-vue'
 
 export default {
   components: {
     ArrowDown,
+    ArrowUp,
     ArrowRight,
     User,
     SwitchButton,
@@ -382,6 +428,46 @@ export default {
   color: #818cf8;
   letter-spacing: 2px;
   text-transform: uppercase;
+}
+
+/* 메뉴 컨트롤 */
+.menu-controls {
+  position: relative;
+  z-index: 1;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.menu-control-btn.toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.menu-control-btn.toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.menu-control-btn.toggle.expanded {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.3);
+  color: rgba(165, 180, 252, 0.9);
+}
+
+.menu-control-btn.toggle:active {
+  transform: scale(0.98);
 }
 
 /* 네비게이션 */

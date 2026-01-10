@@ -2,6 +2,8 @@ import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { useRouter } from 'vue-router'
 import { login as loginApi, getCurrentUser, logout as logoutApi } from '@/api/auth'
+import { getActiveMenuTree } from '@/api/menu'
+import { registerDynamicRoutes } from '@/router'
 import type { UserInfo, LoginRequest } from '@/types/auth'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -48,6 +50,16 @@ export const useAuthStore = defineStore('auth', () => {
       // 상태 업데이트
       user.value = userInfo
 
+      // 메뉴 로드 및 동적 라우트 등록
+      try {
+        const menuResponse = await getActiveMenuTree('main')
+        if (menuResponse.data.data) {
+          registerDynamicRoutes(menuResponse.data.data)
+        }
+      } catch (menuError) {
+        console.warn('[Auth] 메뉴 로드 실패:', menuError)
+      }
+
       return { success: true }
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { message?: string } } }
@@ -62,7 +74,7 @@ export const useAuthStore = defineStore('auth', () => {
   const logout = () => {
     logoutApi()
     user.value = null
-    router.push('/login')
+    router.push('/adm/login')
   }
 
   // 사용자 정보 새로고침

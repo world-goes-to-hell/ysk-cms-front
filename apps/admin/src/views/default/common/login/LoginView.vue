@@ -30,7 +30,7 @@ const handleLogin = async () => {
       })
 
       if (result.success) {
-        router.push('/')
+        router.push('/adm/dashboard')
       }
     }
   })
@@ -479,6 +479,16 @@ export default {
 
 :deep(.el-input__inner) {
   height: 44px;
+}
+
+/* 브라우저 자동완성(autofill) 스타일 오버라이드 */
+:deep(.el-input__inner:-webkit-autofill),
+:deep(.el-input__inner:-webkit-autofill:hover),
+:deep(.el-input__inner:-webkit-autofill:focus),
+:deep(.el-input__inner:-webkit-autofill:active) {
+  -webkit-box-shadow: 0 0 0 1000px #334155 inset !important;
+  -webkit-text-fill-color: #f1f5f9 !important;
+  transition: background-color 5000s ease-in-out 0s;
 }
 
 :deep(.el-form-item) {
