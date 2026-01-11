@@ -7,7 +7,7 @@ import type { MenuItem } from '@/types/menu'
 const baseRoutes: RouteRecordRaw[] = [
   {
     path: '/',
-    redirect: '/adm/dashboard',
+    redirect: '/adm/login',
   },
   {
     path: '/adm',

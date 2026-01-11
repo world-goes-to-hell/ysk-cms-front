@@ -50,8 +50,8 @@ api.interceptors.response.use(
 
     // 401 에러이고, 재시도가 아닌 경우
     if (error.response?.status === 401 && !originalRequest._retry) {
-      // 로그인 요청인 경우 토큰 갱신 시도하지 않음
-      if (originalRequest.url?.includes('/auth/login')) {
+      // 로그인/회원가입 요청인 경우 토큰 갱신 시도하지 않음
+      if (originalRequest.url?.includes('/auth/login') || originalRequest.url?.includes('/auth/register')) {
         return Promise.reject(error)
       }
 
@@ -74,7 +74,7 @@ api.interceptors.response.use(
         // 리프레시 토큰이 없으면 로그인 페이지로
         localStorage.removeItem('accessToken')
         localStorage.removeItem('user')
-        window.location.href = '/login'
+        window.location.href = '/adm/login'
         return Promise.reject(error)
       }
 
@@ -104,7 +104,7 @@ api.interceptors.response.use(
         localStorage.removeItem('accessToken')
         localStorage.removeItem('refreshToken')
         localStorage.removeItem('user')
-        window.location.href = '/login'
+        window.location.href = '/adm/login'
         return Promise.reject(refreshError)
       }
     }

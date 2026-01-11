@@ -6,6 +6,9 @@ import * as menuApi from '@/api/menu'
 import type { MenuItem, MenuCreateRequest, MenuUpdateRequest, MenuSortItem, RelatedRoute } from '@/types/menu'
 import { viewPaths, getViewFileName } from '@/utils/viewModules'
 import MenuTreeItem from '@/components/menu/MenuTreeItem.vue'
+import { useMenuStore } from '@/stores/menu'
+
+const menuStore = useMenuStore()
 
 // 상태
 const loading = ref(false)
@@ -218,7 +221,7 @@ const toggleExpandAll = () => {
 }
 
 // 메뉴의 부모 ID 찾기
-const findParentId = (targetId: number, items: MenuItem[], parentId: number | null = null): number | null => {
+const findParentId = (targetId: number, items: MenuItem[], parentId: number | null = null): number | null | undefined => {
   for (const item of items) {
     if (item.id === targetId) {
       return parentId
@@ -230,7 +233,7 @@ const findParentId = (targetId: number, items: MenuItem[], parentId: number | nu
       }
     }
   }
-  return undefined as unknown as number | null // not found in this branch
+  return undefined // not found in this branch
 }
 
 // 새 메뉴 추가 다이얼로그
@@ -307,7 +310,7 @@ const saveMenu = async () => {
     } else if (editingMenu.value) {
       const request: MenuUpdateRequest = {
         ...formData.value,
-        parentId: editingParentId.value, // 기존 부모 구조 유지
+        parentId: editingParentId.value ?? null, // 기존 부모 구조 유지 (undefined일 경우 null로 처리)
         relatedRoutes: relatedRoutesJson,
       }
       await menuApi.updateMenu('main', editingMenu.value.id, request)
@@ -315,6 +318,8 @@ const saveMenu = async () => {
     }
     dialogVisible.value = false
     await fetchMenus()
+    // 사이드바 메뉴와 동적 라우터 새로고침
+    await menuStore.refreshMenus()
   } catch (error) {
     ElMessage.error('저장에 실패했습니다.')
   } finally {
@@ -337,6 +342,8 @@ const deleteMenu = async (menu: MenuItem) => {
     await menuApi.deleteMenu('main', menu.id)
     ElMessage.success('메뉴가 삭제되었습니다.')
     await fetchMenus()
+    // 사이드바 메뉴와 동적 라우터 새로고침
+    await menuStore.refreshMenus()
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error('삭제에 실패했습니다.')
@@ -375,6 +382,8 @@ const saveOrder = async () => {
     ElMessage.success('순서가 저장되었습니다.')
     hasChanges.value = false
     await fetchMenus()
+    // 사이드바 메뉴와 동적 라우터 새로고침
+    await menuStore.refreshMenus()
   } catch (error) {
     ElMessage.error('순서 저장에 실패했습니다.')
   } finally {

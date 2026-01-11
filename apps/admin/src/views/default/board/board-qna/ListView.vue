@@ -1,13 +1,24 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getBoards } from '@/api/board'
-import { getPosts, createPost, updatePost, deletePost, answerPost, getPost } from '@/api/board'
-import type { BoardDto, PostDto, PostListDto, PostCreateRequest, PostUpdateRequest, PostStatus } from '@/types/board'
+import { getPosts, deletePost } from '@/api/board'
+import type { BoardDto, PostListDto, PostStatus } from '@/types/board'
+import Pagination from '@/components/common/Pagination.vue'
 
 const route = useRoute()
-const BOARD_TYPE = 'QNA'
+const router = useRouter()
+
+// 라우트 메타에서 게시판 타입 코드 가져오기 (자동 설정)
+const boardType = computed(() => {
+  return (route.meta.boardType as string) || 'qna'
+})
+
+// 라우트 메타에서 게시판 코드 가져오기 (BOARD 타입 메뉴일 경우)
+const fixedBoardCode = computed(() => {
+  return route.meta.boardCode as string | undefined
+})
 
 // 현재 사이트 코드
 const currentSiteCode = computed(() => {
@@ -27,32 +38,12 @@ const pagination = ref({
   page: 1,
   size: 10,
   total: 0,
+  totalPages: 0,
 })
 
 // 검색/필터
 const searchQuery = ref('')
 const filterStatus = ref<PostStatus | ''>('')
-const filterAnswer = ref<'all' | 'answered' | 'waiting'>('all')
-
-// 다이얼로그
-const showFormDialog = ref(false)
-const showDetailDialog = ref(false)
-const isEditing = ref(false)
-const editingPost = ref<PostDto | null>(null)
-const currentPost = ref<PostDto | null>(null)
-
-// 폼 데이터
-const formData = ref<PostCreateRequest & { status?: PostStatus }>({
-  title: '',
-  content: '',
-  author: '',
-  isPinned: false,
-  isSecret: false,
-  status: 'PUBLISHED',
-})
-
-// 답변 데이터
-const answerData = ref('')
 
 // 상태 옵션
 const statusOptions = [
@@ -66,21 +57,20 @@ const selectedBoard = computed(() => {
   return boards.value.find((b) => b.code === selectedBoardCode.value)
 })
 
-// 필터링된 게시글
-const filteredPosts = computed(() => {
-  if (filterAnswer.value === 'all') return posts.value
-  if (filterAnswer.value === 'answered') return posts.value.filter((p) => p.hasAnswer)
-  return posts.value.filter((p) => !p.hasAnswer)
-})
-
-// 게시판 목록 조회 (QNA 타입만)
+// 게시판 목록 조회 (해당 타입만)
 const fetchBoards = async () => {
   isBoardsLoading.value = true
   try {
     const response = await getBoards(currentSiteCode.value)
-    boards.value = response.data.data.filter((b) => b.status === 'ACTIVE' && b.typeCode === BOARD_TYPE)
+    boards.value = response.data.data.filter((b) => b.status === 'ACTIVE' && b.typeCode === boardType.value)
+
+    // 게시판 자동 선택: fixedBoardCode가 있으면 해당 게시판, 없으면 첫 번째 게시판
     if (boards.value.length > 0 && !selectedBoardCode.value) {
-      selectedBoardCode.value = boards.value[0].code
+      if (fixedBoardCode.value && boards.value.some(b => b.code === fixedBoardCode.value)) {
+        selectedBoardCode.value = fixedBoardCode.value
+      } else {
+        selectedBoardCode.value = boards.value[0].code
+      }
     }
   } catch (error) {
     ElMessage.error('게시판 목록을 불러오는데 실패했습니다.')
@@ -104,6 +94,7 @@ const fetchPosts = async () => {
     const data = response.data.data
     posts.value = data.content
     pagination.value.total = data.totalElements
+    pagination.value.totalPages = data.totalPages
   } catch (error) {
     ElMessage.error('Q&A 목록을 불러오는데 실패했습니다.')
   } finally {
@@ -129,99 +120,42 @@ const onPageChange = (page: number) => {
   fetchPosts()
 }
 
-// 새 Q&A 폼 열기
-const openCreateDialog = () => {
-  isEditing.value = false
-  editingPost.value = null
-  formData.value = {
-    title: '',
-    content: '',
-    author: '',
-    isPinned: false,
-    isSecret: false,
-    status: 'PUBLISHED',
-  }
-  showFormDialog.value = true
+// 페이지 사이즈 변경
+const onSizeChange = (size: number) => {
+  pagination.value.size = size
+  pagination.value.page = 1
+  fetchPosts()
 }
 
-// Q&A 수정 폼 열기
-const openEditDialog = async (post: PostListDto) => {
-  try {
-    const response = await getPost(currentSiteCode.value, selectedBoardCode.value, post.id)
-    const postDetail = response.data.data
-    isEditing.value = true
-    editingPost.value = postDetail
-    formData.value = {
-      title: postDetail.title,
-      content: postDetail.content || '',
-      author: postDetail.author || '',
-      isPinned: postDetail.isPinned,
-      isSecret: postDetail.isSecret,
-      status: postDetail.status,
-    }
-    showFormDialog.value = true
-  } catch {
-    ElMessage.error('Q&A 정보를 불러오는데 실패했습니다.')
-  }
+// 현재 라우트 경로 기준으로 관련 페이지 경로 생성
+const getBasePath = () => {
+  // 현재 경로에서 마지막 세그먼트 제거
+  const currentPath = route.path
+  return currentPath
 }
 
-// Q&A 상세 보기 (답변 작성)
-const openDetailDialog = async (post: PostListDto) => {
-  try {
-    const response = await getPost(currentSiteCode.value, selectedBoardCode.value, post.id)
-    currentPost.value = response.data.data
-    answerData.value = currentPost.value.answer || ''
-    showDetailDialog.value = true
-  } catch {
-    ElMessage.error('Q&A 정보를 불러오는데 실패했습니다.')
-  }
+// 새 Q&A 작성 페이지로 이동
+const goToCreate = () => {
+  router.push({
+    path: `${getBasePath()}/form`,
+    query: { boardCode: selectedBoardCode.value }
+  })
 }
 
-// Q&A 저장
-const savePost = async () => {
-  if (!formData.value.title) {
-    ElMessage.warning('제목은 필수입니다.')
-    return
-  }
-
-  try {
-    if (isEditing.value && editingPost.value) {
-      const updateData: PostUpdateRequest = {
-        title: formData.value.title,
-        content: formData.value.content,
-        author: formData.value.author,
-        isPinned: formData.value.isPinned,
-        isSecret: formData.value.isSecret,
-        status: formData.value.status,
-      }
-      await updatePost(currentSiteCode.value, selectedBoardCode.value, editingPost.value.id, updateData)
-      ElMessage.success('Q&A가 수정되었습니다.')
-    } else {
-      await createPost(currentSiteCode.value, selectedBoardCode.value, formData.value)
-      ElMessage.success('Q&A가 생성되었습니다.')
-    }
-    showFormDialog.value = false
-    fetchPosts()
-  } catch (error: unknown) {
-    const axiosError = error as { response?: { data?: { message?: string } } }
-    ElMessage.error(axiosError.response?.data?.message || '저장에 실패했습니다.')
-  }
+// Q&A 수정 페이지로 이동
+const goToEdit = (postId: number) => {
+  router.push({
+    path: `${getBasePath()}/form/${postId}`,
+    query: { boardCode: selectedBoardCode.value }
+  })
 }
 
-// 답변 저장
-const saveAnswer = async () => {
-  if (!currentPost.value) return
-
-  try {
-    await answerPost(currentSiteCode.value, selectedBoardCode.value, currentPost.value.id, {
-      answer: answerData.value,
-    })
-    ElMessage.success('답변이 저장되었습니다.')
-    showDetailDialog.value = false
-    fetchPosts()
-  } catch {
-    ElMessage.error('답변 저장에 실패했습니다.')
-  }
+// Q&A 상세 페이지로 이동
+const goToDetail = (postId: number) => {
+  router.push({
+    path: `${getBasePath()}/${postId}`,
+    query: { boardCode: selectedBoardCode.value }
+  })
 }
 
 // Q&A 삭제
@@ -270,6 +204,13 @@ watch(currentSiteCode, () => {
   fetchBoards()
 })
 
+// 게시판 코드(fixedBoardCode) 변경 감지 - 같은 컴포넌트 내 메뉴 이동 시
+watch(fixedBoardCode, (newVal) => {
+  if (newVal && boards.value.some(b => b.code === newVal)) {
+    selectedBoardCode.value = newVal
+  }
+}, { immediate: false })
+
 onMounted(() => {
   fetchBoards()
 })
@@ -288,12 +229,12 @@ watch(selectedBoardCode, (newVal) => {
     <div class="page-header">
       <div class="header-left">
         <h1>
-          <i class="mdi mdi-chat-question-outline"></i>
+          <i class="mdi mdi-message-question-outline"></i>
           Q&A 관리
         </h1>
         <p>질문과 답변을 관리하세요</p>
       </div>
-      <button class="btn-create" :disabled="!selectedBoardCode" @click="openCreateDialog">
+      <button class="btn-create" :disabled="!selectedBoardCode" @click="goToCreate">
         <i class="mdi mdi-plus"></i>
         새 Q&A 작성
       </button>
@@ -303,7 +244,7 @@ watch(selectedBoardCode, (newVal) => {
     <div v-if="selectedBoardCode" class="stats-row">
       <div class="stat-card">
         <div class="stat-icon total">
-          <i class="mdi mdi-chat-question-outline"></i>
+          <i class="mdi mdi-message-question-outline"></i>
         </div>
         <div class="stat-info">
           <span class="stat-value">{{ pagination.total }}</span>
@@ -330,8 +271,8 @@ watch(selectedBoardCode, (newVal) => {
       </div>
     </div>
 
-    <!-- 게시판 선택 -->
-    <div v-if="boards.length > 1" class="board-selector">
+    <!-- 게시판 선택 (여러 Q&A 게시판이 있을 경우) -->
+    <div v-if="boards.length > 1 && !fixedBoardCode" class="board-selector">
       <div class="selector-label">
         <i class="mdi mdi-view-dashboard-outline"></i>
         게시판 선택
@@ -359,45 +300,24 @@ watch(selectedBoardCode, (newVal) => {
         />
       </div>
       <div class="filter-group">
-        <div class="answer-filter">
-          <button
-            class="filter-btn"
-            :class="{ active: filterAnswer === 'all' }"
-            @click="filterAnswer = 'all'"
-          >
-            전체
-          </button>
-          <button
-            class="filter-btn"
-            :class="{ active: filterAnswer === 'waiting' }"
-            @click="filterAnswer = 'waiting'"
-          >
-            <i class="mdi mdi-clock-outline"></i>
-            답변 대기
-          </button>
-          <button
-            class="filter-btn"
-            :class="{ active: filterAnswer === 'answered' }"
-            @click="filterAnswer = 'answered'"
-          >
-            <i class="mdi mdi-check"></i>
-            답변 완료
-          </button>
-        </div>
         <select v-model="filterStatus" class="filter-select" @change="onSearch">
           <option value="">상태 전체</option>
           <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
             {{ opt.label }}
           </option>
         </select>
+        <button class="btn-search" @click="onSearch">
+          <i class="mdi mdi-magnify"></i>
+          검색
+        </button>
       </div>
     </div>
 
-    <!-- Q&A 목록 -->
+    <!-- Q&A 목록 테이블 -->
     <div v-if="selectedBoardCode" v-loading="isLoading" class="posts-container">
-      <div v-if="filteredPosts.length > 0" class="posts-table">
+      <div v-if="posts.length > 0" class="posts-table">
         <div class="table-header">
-          <div class="col-info">질문 정보</div>
+          <div class="col-info">Q&A 정보</div>
           <div class="col-author">작성자</div>
           <div class="col-answer">답변 상태</div>
           <div class="col-status">상태</div>
@@ -406,19 +326,19 @@ watch(selectedBoardCode, (newVal) => {
         </div>
 
         <div
-          v-for="post in filteredPosts"
+          v-for="post in posts"
           :key="post.id"
           class="table-row"
           :class="{ 'has-answer': post.hasAnswer, 'waiting-answer': !post.hasAnswer }"
         >
-          <!-- 질문 정보 -->
+          <!-- Q&A 정보 -->
           <div class="col-info">
             <div class="post-icon" :class="{ answered: post.hasAnswer }">
               <i v-if="post.hasAnswer" class="mdi mdi-check-circle"></i>
               <i v-else class="mdi mdi-help-circle-outline"></i>
             </div>
             <div class="post-details">
-              <h3 class="post-title" @click="openDetailDialog(post)">
+              <h3 class="post-title" @click="goToDetail(post.id)">
                 {{ post.title }}
               </h3>
               <div class="post-badges">
@@ -444,7 +364,10 @@ watch(selectedBoardCode, (newVal) => {
 
           <!-- 상태 -->
           <div class="col-status">
-            <span class="status-badge" :class="post.status.toLowerCase()">
+            <span
+              class="status-badge"
+              :class="post.status.toLowerCase()"
+            >
               {{ getStatusInfo(post.status).label }}
             </span>
           </div>
@@ -456,10 +379,7 @@ watch(selectedBoardCode, (newVal) => {
 
           <!-- 관리 버튼 -->
           <div class="col-actions">
-            <button class="action-btn answer" title="답변하기" @click="openDetailDialog(post)">
-              <i class="mdi mdi-message-reply-text-outline"></i>
-            </button>
-            <button class="action-btn edit" title="수정" @click="openEditDialog(post)">
+            <button class="action-btn edit" title="수정" @click="goToEdit(post.id)">
               <i class="mdi mdi-pencil-outline"></i>
             </button>
             <button class="action-btn delete" title="삭제" @click="handleDelete(post)">
@@ -472,24 +392,27 @@ watch(selectedBoardCode, (newVal) => {
       <!-- 빈 상태 -->
       <div v-else-if="!isLoading" class="empty-state">
         <div class="empty-icon">
-          <i class="mdi mdi-chat-question-outline"></i>
+          <i class="mdi mdi-message-question-outline"></i>
         </div>
         <h3>Q&A가 없습니다</h3>
         <p>새 Q&A를 작성해보세요</p>
-        <button class="btn-create-empty" @click="openCreateDialog">
+        <button class="btn-create-empty" @click="goToCreate">
           <i class="mdi mdi-plus"></i>
           첫 Q&A 작성하기
         </button>
       </div>
 
       <!-- 페이지네이션 -->
-      <div v-if="filteredPosts.length > 0" class="pagination-wrapper">
-        <el-pagination
-          v-model:current-page="pagination.page"
+      <div v-if="posts.length > 0" class="pagination-wrapper">
+        <Pagination
+          :current-page="pagination.page"
+          :total-pages="pagination.totalPages"
+          :total-elements="pagination.total"
           :page-size="pagination.size"
-          :total="pagination.total"
-          layout="prev, pager, next"
-          @current-change="onPageChange"
+          :show-total="true"
+          :show-size-changer="true"
+          @page-change="onPageChange"
+          @size-change="onSizeChange"
         />
       </div>
     </div>
@@ -498,144 +421,12 @@ watch(selectedBoardCode, (newVal) => {
     <div v-if="boards.length === 0 && !isBoardsLoading" class="empty-state-wrapper">
       <div class="empty-state">
         <div class="empty-icon">
-          <i class="mdi mdi-chat-question-outline"></i>
+          <i class="mdi mdi-message-question-outline"></i>
         </div>
         <h3>Q&A 게시판이 없습니다</h3>
         <p>먼저 Q&A 타입의 게시판을 생성해주세요</p>
       </div>
     </div>
-
-    <!-- Q&A 생성/수정 다이얼로그 -->
-    <el-dialog
-      v-model="showFormDialog"
-      :title="isEditing ? 'Q&A 수정' : '새 Q&A 작성'"
-      width="720px"
-      destroy-on-close
-      class="article-dialog"
-    >
-      <div class="dialog-form">
-        <div class="form-section">
-          <div class="form-field full">
-            <label class="field-label required">제목 (질문)</label>
-            <input
-              v-model="formData.title"
-              type="text"
-              class="field-input"
-              placeholder="질문 제목을 입력하세요"
-            />
-          </div>
-        </div>
-
-        <div class="form-section">
-          <div class="form-field full">
-            <label class="field-label">내용</label>
-            <textarea
-              v-model="formData.content"
-              class="field-textarea"
-              placeholder="질문 내용을 입력하세요"
-              rows="6"
-            ></textarea>
-          </div>
-        </div>
-
-        <div class="form-section">
-          <div class="form-row">
-            <div class="form-field">
-              <label class="field-label">작성자</label>
-              <input
-                v-model="formData.author"
-                type="text"
-                class="field-input"
-                placeholder="작성자명"
-              />
-            </div>
-            <div class="form-field">
-              <label class="field-label">상태</label>
-              <select v-model="formData.status" class="field-select">
-                <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
-                  {{ opt.label }}
-                </option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div class="form-section">
-          <h4 class="section-title">
-            <i class="mdi mdi-cog-outline"></i>
-            옵션
-          </h4>
-          <div class="feature-options">
-            <label class="toggle-option">
-              <input v-model="formData.isSecret" type="checkbox" class="toggle-checkbox" />
-              <span class="toggle-switch"></span>
-              <span class="toggle-label">
-                <i class="mdi mdi-lock-outline"></i>
-                비밀글
-              </span>
-            </label>
-          </div>
-        </div>
-      </div>
-
-      <template #footer>
-        <div class="dialog-footer">
-          <button class="btn-cancel" @click="showFormDialog = false">취소</button>
-          <button class="btn-save" @click="savePost">
-            <i class="mdi" :class="isEditing ? 'mdi-content-save' : 'mdi-plus'"></i>
-            {{ isEditing ? '저장' : '작성' }}
-          </button>
-        </div>
-      </template>
-    </el-dialog>
-
-    <!-- Q&A 상세/답변 다이얼로그 -->
-    <el-dialog
-      v-model="showDetailDialog"
-      title="Q&A 상세 및 답변"
-      width="800px"
-      destroy-on-close
-    >
-      <div v-if="currentPost" class="qna-detail">
-        <!-- 질문 영역 -->
-        <div class="question-section">
-          <div class="section-header">
-            <span class="section-label question">Q</span>
-            <div class="section-meta">
-              <span class="meta-author">{{ currentPost.author || '익명' }}</span>
-              <span class="meta-date">{{ formatDate(currentPost.createdAt) }}</span>
-            </div>
-          </div>
-          <h3 class="question-title">{{ currentPost.title }}</h3>
-          <div class="question-content" v-html="currentPost.content || '내용이 없습니다.'"></div>
-        </div>
-
-        <!-- 답변 영역 -->
-        <div class="answer-section">
-          <div class="section-header">
-            <span class="section-label answer">A</span>
-            <span v-if="currentPost.hasAnswer" class="answered-badge">
-              <i class="mdi mdi-check"></i> 답변 완료
-            </span>
-            <span v-else class="waiting-badge">
-              <i class="mdi mdi-clock-outline"></i> 답변 대기
-            </span>
-          </div>
-          <textarea
-            v-model="answerData"
-            class="answer-textarea"
-            placeholder="답변을 입력하세요..."
-            rows="6"
-          ></textarea>
-          <div class="answer-actions">
-            <button class="btn-save-answer" @click="saveAnswer">
-              <i class="mdi mdi-send"></i>
-              답변 저장
-            </button>
-          </div>
-        </div>
-      </div>
-    </el-dialog>
   </div>
 </template>
 
@@ -665,7 +456,7 @@ watch(selectedBoardCode, (newVal) => {
 
 .header-left h1 .mdi {
   font-size: 32px;
-  color: #ef4444;
+  color: #06b6d4;
 }
 
 .header-left p {
@@ -679,7 +470,7 @@ watch(selectedBoardCode, (newVal) => {
   align-items: center;
   gap: 8px;
   padding: 12px 24px;
-  background: linear-gradient(135deg, #ef4444 0%, #f87171 100%);
+  background: linear-gradient(135deg, #06b6d4 0%, #22d3ee 100%);
   color: white;
   border: none;
   border-radius: 12px;
@@ -687,12 +478,12 @@ watch(selectedBoardCode, (newVal) => {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
 }
 
 .btn-create:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.4);
 }
 
 .btn-create:disabled {
@@ -736,8 +527,8 @@ watch(selectedBoardCode, (newVal) => {
 }
 
 .stat-icon.total {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background: rgba(6, 182, 212, 0.1);
+  color: #06b6d4;
 }
 
 .stat-icon.answered {
@@ -792,7 +583,7 @@ watch(selectedBoardCode, (newVal) => {
 
 .selector-label .mdi {
   font-size: 20px;
-  color: #ef4444;
+  color: #06b6d4;
 }
 
 .selector-content {
@@ -815,8 +606,8 @@ watch(selectedBoardCode, (newVal) => {
 
 .board-select:focus {
   outline: none;
-  border-color: #ef4444;
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+  border-color: #06b6d4;
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.1);
 }
 
 .board-desc {
@@ -829,7 +620,6 @@ watch(selectedBoardCode, (newVal) => {
   display: flex;
   gap: 16px;
   margin-bottom: 24px;
-  flex-wrap: wrap;
 }
 
 .search-box {
@@ -860,8 +650,8 @@ watch(selectedBoardCode, (newVal) => {
 
 .search-box input:focus {
   outline: none;
-  border-color: #ef4444;
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+  border-color: #06b6d4;
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.1);
 }
 
 .search-box input::placeholder {
@@ -871,41 +661,6 @@ watch(selectedBoardCode, (newVal) => {
 .filter-group {
   display: flex;
   gap: 12px;
-  align-items: center;
-}
-
-.answer-filter {
-  display: flex;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.filter-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 16px;
-  background: transparent;
-  border: none;
-  font-size: 13px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.filter-btn:hover {
-  background: var(--bg-tertiary);
-}
-
-.filter-btn.active {
-  background: #ef4444;
-  color: white;
-}
-
-.filter-btn .mdi {
-  font-size: 16px;
 }
 
 .filter-select {
@@ -921,10 +676,33 @@ watch(selectedBoardCode, (newVal) => {
 
 .filter-select:focus {
   outline: none;
-  border-color: #ef4444;
+  border-color: #06b6d4;
 }
 
-/* 게시글 테이블 */
+.btn-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 20px;
+  background: #06b6d4;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-search:hover {
+  background: #0891b2;
+}
+
+.btn-search .mdi {
+  font-size: 18px;
+}
+
+/* Q&A 테이블 */
 .posts-container {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
@@ -938,7 +716,7 @@ watch(selectedBoardCode, (newVal) => {
 
 .table-header {
   display: grid;
-  grid-template-columns: 1fr 100px 120px 90px 140px 120px;
+  grid-template-columns: 1fr 100px 120px 90px 140px 100px;
   gap: 16px;
   padding: 16px 24px;
   background: var(--bg-tertiary);
@@ -952,7 +730,7 @@ watch(selectedBoardCode, (newVal) => {
 
 .table-row {
   display: grid;
-  grid-template-columns: 1fr 100px 120px 90px 140px 120px;
+  grid-template-columns: 1fr 100px 120px 90px 140px 100px;
   gap: 16px;
   padding: 20px 24px;
   align-items: center;
@@ -976,7 +754,7 @@ watch(selectedBoardCode, (newVal) => {
   border-left: 3px solid #10b981;
 }
 
-/* 게시글 정보 */
+/* Q&A 정보 */
 .col-info {
   display: flex;
   align-items: center;
@@ -1021,7 +799,7 @@ watch(selectedBoardCode, (newVal) => {
 }
 
 .post-title:hover {
-  color: #ef4444;
+  color: #06b6d4;
 }
 
 .post-badges {
@@ -1134,22 +912,13 @@ watch(selectedBoardCode, (newVal) => {
   font-size: 18px;
 }
 
-.action-btn.answer {
-  color: #ef4444;
-}
-
-.action-btn.answer:hover {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: #ef4444;
-}
-
 .action-btn.edit {
-  color: #6366f1;
+  color: #06b6d4;
 }
 
 .action-btn.edit:hover {
-  background: rgba(99, 102, 241, 0.1);
-  border-color: #6366f1;
+  background: rgba(6, 182, 212, 0.1);
+  border-color: #06b6d4;
 }
 
 .action-btn.delete {
@@ -1183,14 +952,14 @@ watch(selectedBoardCode, (newVal) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(239, 68, 68, 0.1);
+  background: rgba(6, 182, 212, 0.1);
   border-radius: 20px;
   margin-bottom: 24px;
 }
 
 .empty-icon .mdi {
   font-size: 40px;
-  color: #ef4444;
+  color: #06b6d4;
 }
 
 .empty-state h3 {
@@ -1211,7 +980,7 @@ watch(selectedBoardCode, (newVal) => {
   align-items: center;
   gap: 8px;
   padding: 12px 24px;
-  background: #ef4444;
+  background: #06b6d4;
   color: white;
   border: none;
   border-radius: 10px;
@@ -1222,338 +991,15 @@ watch(selectedBoardCode, (newVal) => {
 }
 
 .btn-create-empty:hover {
-  background: #dc2626;
+  background: #0891b2;
 }
 
 /* 페이지네이션 */
 .pagination-wrapper {
   display: flex;
   justify-content: center;
-  padding: 20px;
-  background: var(--bg-primary);
+  padding: 24px;
   border-top: 1px solid var(--border-color);
-}
-
-/* 다이얼로그 폼 */
-.dialog-form {
-  padding: 8px 0;
-}
-
-.form-section {
-  margin-bottom: 24px;
-}
-
-.form-section:last-child {
-  margin-bottom: 0;
-}
-
-.section-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 16px 0;
-}
-
-.section-title .mdi {
-  font-size: 18px;
-  color: #ef4444;
-}
-
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-.form-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.form-field.full {
-  grid-column: 1 / -1;
-}
-
-.field-label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.field-label.required::after {
-  content: ' *';
-  color: #ef4444;
-}
-
-.field-input,
-.field-textarea,
-.field-select {
-  padding: 10px 14px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  font-size: 14px;
-  color: var(--text-primary);
-  transition: all 0.2s ease;
-}
-
-.field-input:focus,
-.field-textarea:focus,
-.field-select:focus {
-  outline: none;
-  border-color: #ef4444;
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
-}
-
-.field-textarea {
-  resize: vertical;
-  min-height: 120px;
-}
-
-/* 기능 옵션 */
-.feature-options {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.toggle-option {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  cursor: pointer;
-}
-
-.toggle-checkbox {
-  display: none;
-}
-
-.toggle-switch {
-  width: 44px;
-  height: 24px;
-  background: var(--bg-tertiary);
-  border-radius: 12px;
-  position: relative;
-  transition: all 0.2s ease;
-}
-
-.toggle-switch::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  background: white;
-  border-radius: 50%;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.toggle-checkbox:checked + .toggle-switch {
-  background: #ef4444;
-}
-
-.toggle-checkbox:checked + .toggle-switch::after {
-  left: 23px;
-}
-
-.toggle-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  color: var(--text-primary);
-}
-
-.toggle-label .mdi {
-  font-size: 18px;
-  color: var(--text-secondary);
-}
-
-/* 다이얼로그 푸터 */
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.btn-cancel {
-  padding: 10px 20px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-cancel:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-}
-
-.btn-save {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 24px;
-  background: linear-gradient(135deg, #ef4444 0%, #f87171 100%);
-  border: none;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  color: white;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-save:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
-}
-
-.btn-save .mdi {
-  font-size: 18px;
-}
-
-/* Q&A 상세 */
-.qna-detail {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-.question-section,
-.answer-section {
-  padding: 20px;
-  background: var(--bg-tertiary);
-  border-radius: 12px;
-}
-
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.section-label {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.section-label.question {
-  background: linear-gradient(135deg, #ef4444 0%, #f87171 100%);
-  color: white;
-}
-
-.section-label.answer {
-  background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
-  color: white;
-}
-
-.section-meta {
-  display: flex;
-  gap: 12px;
-  font-size: 13px;
-  color: var(--text-tertiary);
-}
-
-.answered-badge,
-.waiting-badge {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  margin-left: auto;
-}
-
-.answered-badge {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
-}
-
-.waiting-badge {
-  background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
-}
-
-.question-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 12px 0;
-}
-
-.question-content {
-  font-size: 14px;
-  line-height: 1.8;
-  color: var(--text-secondary);
-}
-
-.answer-textarea {
-  width: 100%;
-  padding: 16px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  font-size: 14px;
-  color: var(--text-primary);
-  resize: vertical;
-  min-height: 150px;
-  transition: all 0.2s ease;
-}
-
-.answer-textarea:focus {
-  outline: none;
-  border-color: #10b981;
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
-}
-
-.answer-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
-
-.btn-save-answer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 24px;
-  background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
-  border: none;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  color: white;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-save-answer:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-}
-
-.btn-save-answer .mdi {
-  font-size: 18px;
 }
 
 /* 반응형 */
@@ -1564,7 +1010,7 @@ watch(selectedBoardCode, (newVal) => {
 
   .table-header,
   .table-row {
-    grid-template-columns: 1fr 90px 100px 80px 120px 100px;
+    grid-template-columns: 1fr 90px 100px 80px 120px 90px;
   }
 }
 
@@ -1608,16 +1054,6 @@ watch(selectedBoardCode, (newVal) => {
 
   .filter-group {
     width: 100%;
-    flex-wrap: wrap;
-  }
-
-  .answer-filter {
-    width: 100%;
-  }
-
-  .filter-btn {
-    flex: 1;
-    justify-content: center;
   }
 
   .filter-select {
@@ -1651,10 +1087,6 @@ watch(selectedBoardCode, (newVal) => {
     justify-content: flex-end;
     padding-top: 12px;
     border-top: 1px solid var(--border-color);
-  }
-
-  .form-row {
-    grid-template-columns: 1fr;
   }
 }
 </style>

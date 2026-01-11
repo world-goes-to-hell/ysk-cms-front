@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { getDashboard } from '@/api/dashboard'
-import type { DashboardResponse, RecentPost, RecentActivity, StatItem, PostStats } from '@/types/dashboard'
+import type { DashboardResponse, RecentArticle, RecentActivity, StatItem, ArticleStats } from '@/types/dashboard'
 import { ElMessage } from 'element-plus'
 
 // 색상 프리셋 정의
@@ -35,14 +35,14 @@ const stats = ref([
 ])
 
 // 게시글 통계
-const postStats = ref<PostStats>({
+const articleStats = ref<ArticleStats>({
   today: 0,
   thisWeek: 0,
   thisMonth: 0,
 })
 
 // 최근 게시글
-const recentPosts = ref<RecentPost[]>([])
+const recentArticles = ref<RecentArticle[]>([])
 
 // 최근 활동
 const recentActivities = ref<RecentActivity[]>([])
@@ -79,8 +79,8 @@ const fetchDashboardData = async () => {
     if (response.data.success && response.data.data) {
       const data = response.data.data
       updateStats(data)
-      postStats.value = data.postStats || { today: 0, thisWeek: 0, thisMonth: 0 }
-      recentPosts.value = data.recentPosts || []
+      articleStats.value = data.articleStats || { today: 0, thisWeek: 0, thisMonth: 0 }
+      recentArticles.value = data.recentArticles || []
       recentActivities.value = data.recentActivities || []
     }
   } catch (error) {
@@ -257,8 +257,8 @@ const closeColorPicker = () => {
         </div>
 
         <div class="posts-list">
-          <template v-if="recentPosts.length > 0">
-            <div v-for="post in recentPosts" :key="post.id" class="post-item">
+          <template v-if="recentArticles.length > 0">
+            <div v-for="post in recentArticles" :key="post.id" class="post-item">
               <div class="post-main">
                 <div class="post-title-row">
                   <span class="post-badge">{{ post.board }}</span>
@@ -288,15 +288,15 @@ const closeColorPicker = () => {
         <div class="posts-footer">
           <div class="footer-stats">
             <div class="fs-item">
-              <span class="fs-number">{{ postStats.today }}</span>
+              <span class="fs-number">{{ articleStats.today }}</span>
               <span class="fs-label">오늘 등록</span>
             </div>
             <div class="fs-item">
-              <span class="fs-number">{{ postStats.thisWeek }}</span>
+              <span class="fs-number">{{ articleStats.thisWeek }}</span>
               <span class="fs-label">이번 주</span>
             </div>
             <div class="fs-item">
-              <span class="fs-number">{{ postStats.thisMonth }}</span>
+              <span class="fs-number">{{ articleStats.thisMonth }}</span>
               <span class="fs-label">이번 달</span>
             </div>
           </div>

@@ -2,23 +2,42 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getPost, deletePost, publishPost } from '@/api/board'
-import type { PostDto, PostStatus } from '@/types/board'
+import { getBoards, getPost, deletePost, publishPost } from '@/api/board'
+import type { BoardDto, PostDto, PostStatus } from '@/types/board'
+import DOMPurify from 'dompurify'
+import CommentSection from '@/components/comment/CommentSection.vue'
 
 const route = useRoute()
 const router = useRouter()
 
-// 라우트 파라미터
+// 라우트 메타에서 게시판 타입 코드 가져오기 (자동 설정)
+const boardType = computed(() => {
+  return (route.meta.boardType as string) || 'normal'
+})
+
+// 현재 사이트 코드
 const currentSiteCode = computed(() => {
   const siteId = route.params.siteId as string
   return siteId || 'main'
 })
-const boardCode = computed(() => route.params.boardCode as string)
-const articleId = computed(() => Number(route.params.id))
+
+// 게시글 ID
+const postId = computed(() => {
+  const id = route.params.id as string
+  return id ? parseInt(id, 10) : null
+})
+
+// 게시판 코드 (query에서 가져오기)
+const boardCode = computed(() => {
+  return (route.query.boardCode as string) || ''
+})
 
 // 상태
-const article = ref<PostDto | null>(null)
+const boards = ref<BoardDto[]>([])
+const selectedBoardCode = ref('')
+const post = ref<PostDto | null>(null)
 const isLoading = ref(false)
+const isAttachmentsExpanded = ref(true)
 
 // 상태 옵션
 const statusOptions = [
@@ -27,26 +46,10 @@ const statusOptions = [
   { value: 'ARCHIVED', label: '보관됨', color: '#E6A23C' },
 ]
 
-// 게시글 상세 조회
-const fetchArticle = async () => {
-  if (!boardCode.value || !articleId.value) return
-
-  isLoading.value = true
-  try {
-    const response = await getPost(
-      currentSiteCode.value,
-      boardCode.value,
-      articleId.value,
-      true, // 조회수 증가
-    )
-    article.value = response.data.data
-  } catch (error) {
-    ElMessage.error('게시글을 불러오는데 실패했습니다.')
-    router.back()
-  } finally {
-    isLoading.value = false
-  }
-}
+// 선택된 게시판 정보
+const selectedBoard = computed(() => {
+  return boards.value.find((b) => b.code === selectedBoardCode.value)
+})
 
 // 상태 정보 가져오기
 const getStatusInfo = (status: PostStatus) => {
@@ -65,23 +68,108 @@ const formatDate = (dateStr: string | null) => {
   })
 }
 
-// 수정 페이지로 이동
-const goToEdit = () => {
-  router.push({
-    path: `/boards/${boardCode.value}/${articleId.value}/edit`,
+// 파일 크기 포맷
+const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+// 파일 URL 가져오기
+const getFileUrl = (url: string): string => {
+  if (!url) return ''
+  if (url.startsWith('/api')) {
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api'
+    const hostUrl = baseUrl.replace(/\/api$/, '')
+    return hostUrl + url
+  }
+  return url
+}
+
+// 파일 아이콘 가져오기
+const getFileIcon = (mimeType: string): string => {
+  if (mimeType.startsWith('image/')) return 'mdi-file-image-outline'
+  if (mimeType.startsWith('video/')) return 'mdi-file-video-outline'
+  if (mimeType.startsWith('audio/')) return 'mdi-file-music-outline'
+  if (mimeType.includes('pdf')) return 'mdi-file-pdf-box'
+  if (mimeType.includes('word') || mimeType.includes('document')) return 'mdi-file-word-outline'
+  if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) return 'mdi-file-excel-outline'
+  if (mimeType.includes('zip') || mimeType.includes('compressed')) return 'mdi-folder-zip-outline'
+  return 'mdi-file-outline'
+}
+
+// 첨부파일 섹션 토글
+const toggleAttachments = () => {
+  isAttachmentsExpanded.value = !isAttachmentsExpanded.value
+}
+
+// HTML 콘텐츠 sanitize (XSS 방지)
+const sanitizeHtml = (html: string | null | undefined): string => {
+  if (!html) return '내용이 없습니다.'
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 's', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'span', 'div'],
+    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'style', 'target', 'rel'],
+    ALLOW_DATA_ATTR: false,
   })
 }
 
-// 목록으로 이동
-const goToList = () => {
+// 게시판 목록 조회 (해당 타입만)
+const fetchBoards = async () => {
+  try {
+    const response = await getBoards(currentSiteCode.value)
+    boards.value = response.data.data.filter((b) => b.status === 'ACTIVE' && b.typeCode === boardType.value)
+
+    // query에서 전달받은 boardCode 사용
+    if (boardCode.value && boards.value.some(b => b.code === boardCode.value)) {
+      selectedBoardCode.value = boardCode.value
+    } else if (boards.value.length > 0) {
+      selectedBoardCode.value = boards.value[0].code
+    }
+  } catch (error) {
+    ElMessage.error('게시판 목록을 불러오는데 실패했습니다.')
+  }
+}
+
+// 게시글 정보 로드
+const fetchPost = async () => {
+  if (!postId.value || !selectedBoardCode.value) return
+
+  isLoading.value = true
+  try {
+    const response = await getPost(currentSiteCode.value, selectedBoardCode.value, postId.value, true)
+    post.value = response.data.data
+  } catch (error) {
+    ElMessage.error('게시글 정보를 불러오는데 실패했습니다.')
+    goBack()
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// 목록으로 돌아가기
+const goBack = () => {
+  // 현재 경로에서 /:id 부분 제거
+  const currentPath = route.path
+  const basePath = currentPath.replace(/\/\d+$/, '')
+  router.push(basePath)
+}
+
+// 수정 페이지로 이동
+const goToEdit = () => {
+  if (!postId.value) return
+  const currentPath = route.path
+  const basePath = currentPath.replace(/\/\d+$/, '')
   router.push({
-    path: `/boards/${boardCode.value}`,
+    path: `${basePath}/form/${postId.value}`,
+    query: { boardCode: selectedBoardCode.value }
   })
 }
 
 // 게시글 발행
 const handlePublish = async () => {
-  if (!article.value) return
+  if (!post.value) return
 
   try {
     await ElMessageBox.confirm('게시글을 발행하시겠습니까?', '게시글 발행', {
@@ -90,9 +178,9 @@ const handlePublish = async () => {
       type: 'info',
     })
 
-    await publishPost(currentSiteCode.value, boardCode.value, articleId.value)
+    await publishPost(currentSiteCode.value, selectedBoardCode.value, post.value.id)
     ElMessage.success('게시글이 발행되었습니다.')
-    fetchArticle()
+    await fetchPost()
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error('발행에 실패했습니다.')
@@ -102,11 +190,11 @@ const handlePublish = async () => {
 
 // 게시글 삭제
 const handleDelete = async () => {
-  if (!article.value) return
+  if (!post.value) return
 
   try {
     await ElMessageBox.confirm(
-      `'${article.value.title}' 게시글을 삭제하시겠습니까?`,
+      `'${post.value.title}' 게시글을 삭제하시겠습니까?`,
       '게시글 삭제',
       {
         confirmButtonText: '삭제',
@@ -115,9 +203,9 @@ const handleDelete = async () => {
       },
     )
 
-    await deletePost(currentSiteCode.value, boardCode.value, articleId.value)
+    await deletePost(currentSiteCode.value, selectedBoardCode.value, post.value.id)
     ElMessage.success('게시글이 삭제되었습니다.')
-    goToList()
+    goBack()
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error('삭제에 실패했습니다.')
@@ -125,130 +213,157 @@ const handleDelete = async () => {
   }
 }
 
-onMounted(() => {
-  fetchArticle()
+onMounted(async () => {
+  await fetchBoards()
+  await fetchPost()
 })
 </script>
 
 <template>
-  <div class="article-detail-page">
-    <!-- 로딩 -->
-    <div v-if="isLoading" v-loading="true" class="loading-container" />
-
-    <!-- 게시글 상세 -->
-    <template v-else-if="article">
-      <!-- 페이지 헤더 -->
-      <div class="page-header">
-        <div class="header-left">
-          <button class="btn-back" @click="goToList">
-            <i class="mdi mdi-arrow-left"></i>
-            목록으로
-          </button>
-          <div class="board-info">
-            <span class="board-name">{{ article.boardName }}</span>
-          </div>
-        </div>
-        <div class="header-actions">
-          <button
-            v-if="article.status === 'DRAFT'"
-            class="btn-publish"
-            @click="handlePublish"
-          >
-            <i class="mdi mdi-send-outline"></i>
-            발행하기
-          </button>
-          <button class="btn-edit" @click="goToEdit">
-            <i class="mdi mdi-pencil-outline"></i>
-            수정
-          </button>
-          <button class="btn-delete" @click="handleDelete">
-            <i class="mdi mdi-trash-can-outline"></i>
-            삭제
-          </button>
+  <div class="post-detail-page">
+    <!-- 페이지 헤더 -->
+    <div class="page-header">
+      <div class="header-left">
+        <button class="btn-back" @click="goBack">
+          <i class="mdi mdi-arrow-left"></i>
+        </button>
+        <div class="header-info">
+          <h1>
+            <i class="mdi mdi-text-box-outline"></i>
+            게시글 상세
+          </h1>
+          <p v-if="selectedBoard">{{ selectedBoard.name }}</p>
         </div>
       </div>
+      <div class="header-actions">
+        <button
+          v-if="post?.status === 'DRAFT'"
+          class="btn-publish"
+          @click="handlePublish"
+        >
+          <i class="mdi mdi-send-outline"></i>
+          발행
+        </button>
+        <button class="btn-edit" @click="goToEdit">
+          <i class="mdi mdi-pencil-outline"></i>
+          수정
+        </button>
+        <button class="btn-delete" @click="handleDelete">
+          <i class="mdi mdi-trash-can-outline"></i>
+          삭제
+        </button>
+      </div>
+    </div>
 
-      <!-- 게시글 내용 -->
-      <div class="article-container">
-        <!-- 헤더 -->
-        <div class="article-header">
-          <div class="header-badges">
-            <span v-if="article.isPinned" class="badge pinned">
+    <!-- 게시글 상세 -->
+    <div v-loading="isLoading" class="detail-container">
+      <template v-if="post">
+        <!-- 게시글 정보 헤더 -->
+        <div class="post-header">
+          <div class="post-badges">
+            <span v-if="post.isPinned" class="badge pinned">
               <i class="mdi mdi-pin"></i> 상단 고정
             </span>
-            <span v-if="article.isSecret" class="badge secret">
-              <i class="mdi mdi-lock-outline"></i> 비밀글
+            <span v-if="post.isSecret" class="badge secret">
+              <i class="mdi mdi-lock"></i> 비밀글
             </span>
-            <span class="status-badge" :class="article.status.toLowerCase()">
-              {{ getStatusInfo(article.status).label }}
+            <span class="status-badge" :class="post.status.toLowerCase()">
+              {{ getStatusInfo(post.status).label }}
             </span>
           </div>
-          <h1 class="article-title">{{ article.title }}</h1>
-          <div class="article-meta">
+
+          <h2 class="post-title">{{ post.title }}</h2>
+
+          <div class="post-meta">
             <div class="meta-item">
               <i class="mdi mdi-account-outline"></i>
-              <span>{{ article.author || '익명' }}</span>
-            </div>
-            <div class="meta-item">
-              <i class="mdi mdi-calendar-outline"></i>
-              <span>{{ formatDate(article.createdAt) }}</span>
+              <span>{{ post.author || '익명' }}</span>
             </div>
             <div class="meta-item">
               <i class="mdi mdi-eye-outline"></i>
-              <span>조회 {{ article.viewCount }}</span>
+              <span>조회수 {{ post.viewCount }}</span>
             </div>
-            <div v-if="article.updatedAt !== article.createdAt" class="meta-item">
-              <i class="mdi mdi-pencil-outline"></i>
-              <span>수정 {{ formatDate(article.updatedAt) }}</span>
+            <div class="meta-item">
+              <i class="mdi mdi-calendar-outline"></i>
+              <span>{{ formatDate(post.createdAt) }}</span>
+            </div>
+            <div v-if="post.updatedAt && post.updatedAt !== post.createdAt" class="meta-item">
+              <i class="mdi mdi-update"></i>
+              <span>수정일 {{ formatDate(post.updatedAt) }}</span>
             </div>
           </div>
         </div>
 
-        <!-- 본문 -->
-        <div class="article-content">
-          <div v-if="article.content" v-html="article.content" class="content-body" />
-          <div v-else class="content-empty">내용이 없습니다.</div>
+        <!-- 게시글 내용 -->
+        <div class="post-content">
+          <div class="content-body" v-html="sanitizeHtml(post.content)" />
         </div>
 
-        <!-- 하단 버튼 -->
-        <div class="article-footer">
-          <button class="btn-list" @click="goToList">
-            <i class="mdi mdi-format-list-bulleted"></i>
-            목록
+        <!-- 첨부파일 섹션 -->
+        <div v-if="post.attachments && post.attachments.length > 0" class="attachments-section">
+          <button type="button" class="attachments-header" @click.stop="toggleAttachments">
+            <div class="header-left">
+              <i class="mdi mdi-attachment"></i>
+              <span>첨부파일 ({{ post.attachments.length }})</span>
+            </div>
+            <i :class="['mdi', 'toggle-icon', isAttachmentsExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down']"></i>
           </button>
-          <div class="footer-right">
-            <button class="btn-edit-lg" @click="goToEdit">
+          <div v-show="isAttachmentsExpanded" class="attachments-list">
+            <a
+              v-for="file in post.attachments"
+              :key="file.id"
+              :href="getFileUrl(file.url)"
+              target="_blank"
+              class="attachment-item"
+              :download="file.originalName"
+            >
+              <i :class="['mdi', 'file-icon', getFileIcon(file.mimeType)]"></i>
+              <span class="attachment-name">{{ file.originalName }}</span>
+              <span class="attachment-size">{{ formatFileSize(file.fileSize) }}</span>
+              <i class="mdi mdi-download download-icon"></i>
+            </a>
+          </div>
+        </div>
+
+        <!-- 하단 액션 -->
+        <div class="post-actions">
+          <button class="btn-list" @click="goBack">
+            <i class="mdi mdi-format-list-bulleted"></i>
+            목록으로
+          </button>
+          <div class="action-right">
+            <button class="btn-edit-secondary" @click="goToEdit">
               <i class="mdi mdi-pencil-outline"></i>
               수정
             </button>
+            <button class="btn-delete-secondary" @click="handleDelete">
+              <i class="mdi mdi-trash-can-outline"></i>
+              삭제
+            </button>
           </div>
         </div>
-      </div>
-    </template>
+      </template>
+    </div>
 
-    <!-- 게시글 없음 -->
-    <div v-else class="empty-state">
-      <div class="empty-icon">
-        <i class="mdi mdi-file-document-outline"></i>
+    <!-- 댓글 섹션 (게시판에서 댓글 기능이 활성화된 경우에만 표시) -->
+    <div v-if="postId && selectedBoardCode && selectedBoard?.useComment" class="comment-section-wrapper">
+      <div class="section-divider">
+        <span class="divider-text">댓글 영역</span>
       </div>
-      <h3>게시글을 찾을 수 없습니다</h3>
-      <button class="btn-back-lg" @click="goToList">
-        <i class="mdi mdi-arrow-left"></i>
-        목록으로 돌아가기
-      </button>
+      <CommentSection
+        :site-code="currentSiteCode"
+        :board-code="selectedBoardCode"
+        :article-id="postId"
+      />
     </div>
   </div>
 </template>
 
 <style scoped>
-.article-detail-page {
+.post-detail-page {
   width: 100%;
   max-width: 900px;
   margin: 0 auto;
-}
-
-.loading-container {
-  min-height: 400px;
 }
 
 /* 페이지 헤더 */
@@ -256,7 +371,9 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .header-left {
@@ -266,79 +383,89 @@ onMounted(() => {
 }
 
 .btn-back {
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
+  justify-content: center;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 10px;
-  font-size: 14px;
-  color: var(--text-secondary);
+  border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .btn-back:hover {
   background: var(--bg-tertiary);
-  color: var(--text-primary);
+  border-color: #6366f1;
 }
 
 .btn-back .mdi {
-  font-size: 18px;
+  font-size: 22px;
+  color: var(--text-secondary);
 }
 
-.board-info {
+.header-info h1 {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 4px 0;
 }
 
-.board-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  padding: 6px 12px;
-  background: rgba(99, 102, 241, 0.1);
-  border-radius: 8px;
+.header-info h1 .mdi {
+  font-size: 28px;
   color: #6366f1;
+}
+
+.header-info p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
 }
 
 .header-actions {
   display: flex;
-  gap: 8px;
+  gap: 12px;
 }
 
 .btn-publish {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 10px 20px;
+  gap: 8px;
+  padding: 12px 20px;
   background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
   color: white;
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
 
 .btn-publish:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}
+
+.btn-publish .mdi {
+  font-size: 18px;
 }
 
 .btn-edit {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 10px 20px;
+  gap: 8px;
+  padding: 12px 20px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   color: #6366f1;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -349,16 +476,20 @@ onMounted(() => {
   border-color: #6366f1;
 }
 
+.btn-edit .mdi {
+  font-size: 18px;
+}
+
 .btn-delete {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 10px 20px;
+  gap: 8px;
+  padding: 12px 20px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   color: #ef4444;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -369,8 +500,12 @@ onMounted(() => {
   border-color: #ef4444;
 }
 
-/* 게시글 컨테이너 */
-.article-container {
+.btn-delete .mdi {
+  font-size: 18px;
+}
+
+/* 상세 컨테이너 */
+.detail-container {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 16px;
@@ -378,29 +513,29 @@ onMounted(() => {
 }
 
 /* 게시글 헤더 */
-.article-header {
-  padding: 32px 32px 24px;
+.post-header {
+  padding: 32px;
   border-bottom: 1px solid var(--border-color);
 }
 
-.header-badges {
+.post-badges {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 16px;
 }
 
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
   font-weight: 500;
 }
 
 .badge .mdi {
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .badge.pinned {
@@ -416,9 +551,9 @@ onMounted(() => {
 .status-badge {
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -437,7 +572,7 @@ onMounted(() => {
   color: #f59e0b;
 }
 
-.article-title {
+.post-title {
   font-size: 26px;
   font-weight: 700;
   color: var(--text-primary);
@@ -445,7 +580,7 @@ onMounted(() => {
   line-height: 1.4;
 }
 
-.article-meta {
+.post-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 20px;
@@ -456,76 +591,218 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
   font-size: 14px;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }
 
 .meta-item .mdi {
   font-size: 18px;
+  color: var(--text-tertiary);
 }
 
-/* 게시글 본문 */
-.article-content {
+/* 게시글 내용 */
+.post-content {
   padding: 32px;
   min-height: 300px;
 }
 
 .content-body {
-  font-size: 16px;
   line-height: 1.8;
+  font-size: 15px;
   color: var(--text-primary);
-  word-break: break-word;
+}
+
+.content-body :deep(p) {
+  margin: 0 0 16px 0;
+}
+
+.content-body :deep(h1),
+.content-body :deep(h2),
+.content-body :deep(h3),
+.content-body :deep(h4),
+.content-body :deep(h5),
+.content-body :deep(h6) {
+  margin: 24px 0 12px 0;
+  color: var(--text-primary);
+}
+
+.content-body :deep(ul),
+.content-body :deep(ol) {
+  margin: 16px 0;
+  padding-left: 24px;
+}
+
+.content-body :deep(li) {
+  margin: 8px 0;
+}
+
+.content-body :deep(blockquote) {
+  margin: 16px 0;
+  padding: 16px 20px;
+  background: var(--bg-tertiary);
+  border-left: 4px solid #6366f1;
+  border-radius: 8px;
+}
+
+.content-body :deep(pre) {
+  margin: 16px 0;
+  padding: 16px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.content-body :deep(code) {
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 14px;
 }
 
 .content-body :deep(img) {
   max-width: 100%;
   height: auto;
   border-radius: 8px;
-  margin: 16px 0;
 }
 
 .content-body :deep(a) {
   color: #6366f1;
+  text-decoration: none;
+}
+
+.content-body :deep(a:hover) {
   text-decoration: underline;
 }
 
-.content-body :deep(pre) {
-  background: var(--bg-tertiary);
-  padding: 16px;
-  border-radius: 8px;
-  overflow-x: auto;
-}
-
-.content-body :deep(code) {
-  background: var(--bg-tertiary);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: 'Monaco', 'Menlo', monospace;
-}
-
-.content-body :deep(blockquote) {
-  border-left: 4px solid #6366f1;
-  padding-left: 16px;
+.content-body :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
   margin: 16px 0;
+}
+
+.content-body :deep(th),
+.content-body :deep(td) {
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  text-align: left;
+}
+
+.content-body :deep(th) {
+  background: var(--bg-tertiary);
+  font-weight: 600;
+}
+
+/* 첨부파일 섹션 */
+.attachments-section {
+  padding: 16px 32px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+}
+
+.attachments-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 0;
+}
+
+.attachments-header .header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text-secondary);
 }
 
-.content-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 200px;
-  color: var(--text-tertiary);
-  font-size: 15px;
+.attachments-header .header-left .mdi {
+  font-size: 16px;
+  color: #6366f1;
 }
 
-/* 게시글 하단 */
-.article-footer {
+.attachments-header .toggle-icon {
+  font-size: 18px;
+  color: var(--text-tertiary);
+  transition: transform 0.2s ease;
+}
+
+.attachments-header:hover .toggle-icon {
+  color: var(--text-secondary);
+}
+
+.attachments-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.attachment-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.attachment-item:hover {
+  border-color: #6366f1;
+  background: rgba(99, 102, 241, 0.05);
+}
+
+.attachment-item .file-icon {
+  font-size: 14px;
+  color: #6366f1;
+}
+
+.attachment-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  max-width: 150px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attachment-size {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.attachment-item .download-icon {
+  font-size: 14px;
+  color: var(--text-tertiary);
+  margin-left: 2px;
+}
+
+.attachment-item:hover .download-icon {
+  color: #6366f1;
+}
+
+/* 하단 액션 */
+.post-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 32px;
+  padding: 24px 32px;
   background: var(--bg-tertiary);
   border-top: 1px solid var(--border-color);
+}
+
+.action-right {
+  display: flex;
+  gap: 12px;
 }
 
 .btn-list {
@@ -535,9 +812,9 @@ onMounted(() => {
   padding: 12px 24px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -552,85 +829,78 @@ onMounted(() => {
   font-size: 18px;
 }
 
-.footer-right {
-  display: flex;
-  gap: 8px;
-}
-
-.btn-edit-lg {
+.btn-edit-secondary {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 24px;
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  color: white;
-  border: none;
+  gap: 6px;
+  padding: 10px 16px;
+  background: transparent;
+  border: 1px solid #6366f1;
   border-radius: 10px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
+  color: #6366f1;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.btn-edit-lg:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
-}
-
-.btn-edit-lg .mdi {
-  font-size: 18px;
-}
-
-/* 빈 상태 */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 80px 20px;
-  text-align: center;
-}
-
-.empty-icon {
-  width: 80px;
-  height: 80px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.btn-edit-secondary:hover {
   background: rgba(99, 102, 241, 0.1);
-  border-radius: 20px;
+}
+
+.btn-edit-secondary .mdi {
+  font-size: 16px;
+}
+
+.btn-delete-secondary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: transparent;
+  border: 1px solid #ef4444;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #ef4444;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-delete-secondary:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.btn-delete-secondary .mdi {
+  font-size: 16px;
+}
+
+/* 댓글 섹션 래퍼 */
+.comment-section-wrapper {
+  margin-top: 32px;
+}
+
+.section-divider {
+  display: flex;
+  align-items: center;
   margin-bottom: 24px;
 }
 
-.empty-icon .mdi {
-  font-size: 40px;
-  color: #6366f1;
+.section-divider::before,
+.section-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--border-color), transparent);
 }
 
-.empty-state h3 {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 24px 0;
-}
-
-.btn-back-lg {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 24px;
-  background: #6366f1;
-  color: white;
-  border: none;
-  border-radius: 10px;
+.divider-text {
+  padding: 0 20px;
   font-size: 14px;
   font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-back-lg:hover {
-  background: #4f46e5;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 /* 반응형 */
@@ -641,45 +911,57 @@ onMounted(() => {
     align-items: stretch;
   }
 
-  .header-left {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
   .header-actions {
-    flex-wrap: wrap;
+    justify-content: stretch;
   }
 
-  .article-header {
-    padding: 24px 20px 20px;
+  .header-actions button {
+    flex: 1;
+    justify-content: center;
   }
 
-  .article-title {
+  .post-header {
+    padding: 24px;
+  }
+
+  .post-title {
     font-size: 22px;
   }
 
-  .article-meta {
+  .post-meta {
     gap: 12px;
   }
 
-  .article-content {
-    padding: 24px 20px;
+  .post-content {
+    padding: 24px;
   }
 
-  .article-footer {
+  .attachments-section {
+    padding: 14px 24px;
+  }
+
+  .attachment-name {
+    max-width: 120px;
+  }
+
+  .post-actions {
     flex-direction: column;
-    gap: 12px;
-    padding: 16px 20px;
+    gap: 16px;
+    padding: 20px 24px;
   }
 
-  .btn-list,
-  .btn-edit-lg {
+  .btn-list {
     width: 100%;
     justify-content: center;
   }
 
-  .footer-right {
+  .action-right {
     width: 100%;
+  }
+
+  .action-right button {
+    flex: 1;
+    justify-content: center;
   }
 }
 </style>

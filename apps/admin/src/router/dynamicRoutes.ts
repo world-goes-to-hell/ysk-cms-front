@@ -13,6 +13,15 @@ function parseRelatedRoutes(json: string | null): RelatedRoute[] {
   }
 }
 
+// componentPath에서 게시판 타입 코드 추출
+// 예: "board/board-normal/ListView" → "normal"
+// 예: "board/board-faq/ListView" → "faq"
+function extractBoardType(componentPath: string | null): string | null {
+  if (!componentPath) return null
+  const match = componentPath.match(/board\/board-([^/]+)\//)
+  return match ? match[1] : null
+}
+
 // URL 경로 정규화 (앞의 /, /adm/, adm/ 제거)
 function normalizePath(url: string): string {
   let path = url
@@ -31,7 +40,9 @@ function normalizePath(url: string): string {
 function relatedRouteToRoute(
   parentUrl: string,
   related: RelatedRoute,
-  menuId: number
+  menuId: number,
+  parentBoardType: string | null,
+  parentBoardCode: string | null
 ): RouteRecordRaw | null {
   const component = getViewComponent(related.componentPath)
   if (!component) {
@@ -50,6 +61,9 @@ function relatedRouteToRoute(
     fullPath = basePath ? `${basePath}/${related.path}` : related.path
   }
 
+  // 관련 라우트 자체에서도 boardType 추출 시도
+  const relatedBoardType = extractBoardType(related.componentPath) || parentBoardType
+
   return {
     path: fullPath,
     name: `${menuId}-${related.path.replace(/[/:]/g, '-')}`,
@@ -58,6 +72,8 @@ function relatedRouteToRoute(
       title: related.name,
       requiresAuth: true,
       parentMenuId: menuId,
+      ...(relatedBoardType && { boardType: relatedBoardType }),
+      ...(parentBoardCode && { boardCode: parentBoardCode }),
     },
   }
 }
@@ -95,6 +111,12 @@ function menuToRoute(menu: MenuItem): RouteRecordRaw | null {
   const path = normalizePath(menu.url)
   console.log(`[Router] -> 라우트 생성: path=${path}, component=OK`)
 
+  // 게시판 타입 추출 (board/board-xxx/ 패턴에서)
+  const boardType = extractBoardType(menu.componentPath)
+
+  // BOARD 타입 메뉴일 경우 code를 boardCode로 사용
+  const boardCode = menu.type === 'BOARD' ? menu.code : null
+
   return {
     path,
     name: menu.code || `menu-${menu.id}`,
@@ -104,6 +126,8 @@ function menuToRoute(menu: MenuItem): RouteRecordRaw | null {
       requiresAuth: true,
       menuId: menu.id,
       roles: menu.roles?.split(',').map((r) => r.trim()) || null,
+      ...(boardType && { boardType }), // 게시판 타입이 있으면 추가
+      ...(boardCode && { boardCode }), // 게시판 코드가 있으면 추가
     },
   }
 }
@@ -115,8 +139,12 @@ function generateRelatedRoutes(menu: MenuItem): RouteRecordRaw[] {
   const relatedRoutes = parseRelatedRoutes(menu.relatedRoutes)
   const routes: RouteRecordRaw[] = []
 
+  // 부모 메뉴에서 boardType과 boardCode 추출
+  const parentBoardType = extractBoardType(menu.componentPath)
+  const parentBoardCode = menu.type === 'BOARD' ? menu.code : null
+
   for (const related of relatedRoutes) {
-    const route = relatedRouteToRoute(menu.url, related, menu.id)
+    const route = relatedRouteToRoute(menu.url, related, menu.id, parentBoardType, parentBoardCode)
     if (route) {
       routes.push(route)
     }

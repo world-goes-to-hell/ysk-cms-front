@@ -2,119 +2,182 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getPost, createPost, updatePost, getBoard } from '@/api/board'
-import type { PostDto, PostCreateRequest, PostUpdateRequest, PostStatus, BoardDto } from '@/types/board'
+import { getBoards, getPost, createPost, updatePost } from '@/api/board'
+import type { BoardDto, PostDto, PostCreateRequest, PostUpdateRequest, PostStatus } from '@/types/board'
+import type { AtchFileDto } from '@/types/atchFile'
+import DOMPurify from 'dompurify'
+import RichTextEditor from '@/components/editor/RichTextEditor.vue'
+import FileUploader from '@/components/file/FileUploader.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
 
 const route = useRoute()
 const router = useRouter()
 
-// 라우트 파라미터
+// 라우트 메타에서 게시판 타입 코드 가져오기 (자동 설정)
+const boardType = computed(() => {
+  return (route.meta.boardType as string) || 'normal'
+})
+
+// 현재 사이트 코드
 const currentSiteCode = computed(() => {
   const siteId = route.params.siteId as string
   return siteId || 'main'
 })
-const boardCode = computed(() => route.params.boardCode as string)
-const articleId = computed(() => {
+
+// 게시글 ID (수정 모드일 경우)
+const postId = computed(() => {
   const id = route.params.id as string
-  return id ? Number(id) : null
+  return id ? parseInt(id, 10) : null
+})
+
+// 게시판 코드 (query에서 가져오기)
+const boardCode = computed(() => {
+  return (route.query.boardCode as string) || ''
 })
 
 // 수정 모드 여부
-const isEditing = computed(() => articleId.value !== null)
+const isEditMode = computed(() => postId.value !== null)
 
 // 상태
-const board = ref<BoardDto | null>(null)
-const article = ref<PostDto | null>(null)
+const boards = ref<BoardDto[]>([])
+const selectedBoardCode = ref('')
 const isLoading = ref(false)
 const isSaving = ref(false)
+const currentPost = ref<PostDto | null>(null)
 
 // 폼 데이터
-const formData = ref<PostCreateRequest & { status: PostStatus }>({
+const formData = ref<PostCreateRequest & { status?: PostStatus }>({
   title: '',
   content: '',
-  author: '',
+  author: authStore.username || '',
   isPinned: false,
   isSecret: false,
   status: 'DRAFT',
 })
 
+// 첨부파일 목록
+const attachments = ref<AtchFileDto[]>([])
+
 // 상태 옵션
 const statusOptions = [
-  { value: 'DRAFT', label: '임시저장', description: '작성 중인 게시글입니다.' },
-  { value: 'PUBLISHED', label: '발행', description: '즉시 공개됩니다.' },
-  { value: 'ARCHIVED', label: '보관', description: '목록에서 숨김 처리됩니다.' },
+  { value: 'DRAFT', label: '임시저장', color: '#909399' },
+  { value: 'PUBLISHED', label: '발행됨', color: '#67C23A' },
+  { value: 'ARCHIVED', label: '보관됨', color: '#E6A23C' },
 ]
 
-// 게시판 정보 조회
-const fetchBoard = async () => {
-  if (!boardCode.value) return
+// 선택된 게시판 정보
+const selectedBoard = computed(() => {
+  return boards.value.find((b) => b.code === selectedBoardCode.value)
+})
 
+// 페이지 제목
+const pageTitle = computed(() => {
+  return isEditMode.value ? '게시글 수정' : '새 게시글 작성'
+})
+
+// 게시판 목록 조회 (해당 타입만)
+const fetchBoards = async () => {
   try {
-    const response = await getBoard(currentSiteCode.value, boardCode.value)
-    board.value = response.data.data
+    const response = await getBoards(currentSiteCode.value)
+    boards.value = response.data.data.filter((b) => b.status === 'ACTIVE' && b.typeCode === boardType.value)
+
+    // query에서 전달받은 boardCode 사용
+    if (boardCode.value && boards.value.some(b => b.code === boardCode.value)) {
+      selectedBoardCode.value = boardCode.value
+    } else if (boards.value.length > 0) {
+      selectedBoardCode.value = boards.value[0].code
+    }
   } catch (error) {
-    ElMessage.error('게시판 정보를 불러오는데 실패했습니다.')
+    ElMessage.error('게시판 목록을 불러오는데 실패했습니다.')
   }
 }
 
-// 게시글 상세 조회 (수정 모드)
-const fetchArticle = async () => {
-  if (!boardCode.value || !articleId.value) return
+// 게시글 정보 로드 (수정 모드)
+const fetchPost = async () => {
+  if (!postId.value || !selectedBoardCode.value) return
 
   isLoading.value = true
   try {
-    const response = await getPost(
-      currentSiteCode.value,
-      boardCode.value,
-      articleId.value,
-    )
-    article.value = response.data.data
+    const response = await getPost(currentSiteCode.value, selectedBoardCode.value, postId.value)
+    currentPost.value = response.data.data
 
-    // 폼 데이터에 기존 값 설정
+    // 폼 데이터에 반영
     formData.value = {
-      title: article.value.title,
-      content: article.value.content || '',
-      author: article.value.author || '',
-      isPinned: article.value.isPinned,
-      isSecret: article.value.isSecret,
-      status: article.value.status,
+      title: currentPost.value.title,
+      content: currentPost.value.content || '',
+      author: currentPost.value.author || '',
+      isPinned: currentPost.value.isPinned,
+      isSecret: currentPost.value.isSecret,
+      status: currentPost.value.status,
+    }
+
+    // 기존 첨부파일 로드
+    if (currentPost.value.attachments && currentPost.value.attachments.length > 0) {
+      attachments.value = currentPost.value.attachments.map(att => ({
+        id: att.id,
+        originalName: att.originalName,
+        url: att.url,
+        mimeType: att.mimeType,
+        fileSize: att.fileSize,
+        type: att.type as import('@/types/atchFile').AtchFileType,
+      }))
     }
   } catch (error) {
-    ElMessage.error('게시글을 불러오는데 실패했습니다.')
-    router.back()
+    ElMessage.error('게시글 정보를 불러오는데 실패했습니다.')
+    goBack()
   } finally {
     isLoading.value = false
   }
 }
 
-// 저장
-const handleSave = async (saveStatus?: PostStatus) => {
-  if (!formData.value.title.trim()) {
-    ElMessage.warning('제목을 입력해주세요.')
+// 게시글 저장
+const savePost = async () => {
+  if (!formData.value.title?.trim()) {
+    ElMessage.warning('제목은 필수입니다.')
+    return
+  }
+
+  if (!selectedBoardCode.value) {
+    ElMessage.warning('게시판을 선택해주세요.')
     return
   }
 
   isSaving.value = true
-
   try {
-    const submitData = {
-      ...formData.value,
-      status: saveStatus || formData.value.status,
-    }
+    // XSS 방지: content sanitize
+    const sanitizedContent = DOMPurify.sanitize(formData.value.content || '', {
+      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 's', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'span', 'div'],
+      ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'style', 'target', 'rel'],
+      ALLOW_DATA_ATTR: false,
+    })
 
-    if (isEditing.value && articleId.value) {
-      // 수정
-      const updateData: PostUpdateRequest = submitData
-      await updatePost(currentSiteCode.value, boardCode.value, articleId.value, updateData)
+    // 첨부파일 ID 목록 추출
+    const attachmentIds = attachments.value.map(f => f.id)
+
+    if (isEditMode.value && postId.value) {
+      const updateData: PostUpdateRequest = {
+        title: formData.value.title,
+        content: sanitizedContent,
+        author: formData.value.author,
+        isPinned: formData.value.isPinned,
+        isSecret: formData.value.isSecret,
+        status: formData.value.status,
+        attachmentIds,
+      }
+      await updatePost(currentSiteCode.value, selectedBoardCode.value, postId.value, updateData)
       ElMessage.success('게시글이 수정되었습니다.')
     } else {
-      // 생성
-      await createPost(currentSiteCode.value, boardCode.value, submitData)
-      ElMessage.success('게시글이 작성되었습니다.')
+      const createData: PostCreateRequest = {
+        ...formData.value,
+        content: sanitizedContent,
+        attachmentIds,
+      }
+      await createPost(currentSiteCode.value, selectedBoardCode.value, createData)
+      ElMessage.success('게시글이 생성되었습니다.')
     }
-
-    // 목록으로 이동
-    goToList()
+    goBack()
   } catch (error: unknown) {
     const axiosError = error as { response?: { data?: { message?: string } } }
     ElMessage.error(axiosError.response?.data?.message || '저장에 실패했습니다.')
@@ -123,209 +186,185 @@ const handleSave = async (saveStatus?: PostStatus) => {
   }
 }
 
-// 임시저장
-const handleSaveDraft = () => {
-  handleSave('DRAFT')
+// 목록으로 돌아가기
+const goBack = () => {
+  // 현재 경로에서 /form 또는 /form/:id 부분 제거
+  const currentPath = route.path
+  const basePath = currentPath.replace(/\/form(\/\d+)?$/, '')
+  router.push(basePath)
 }
 
-// 발행
-const handlePublish = () => {
-  handleSave('PUBLISHED')
-}
-
-// 목록으로 이동
-const goToList = () => {
-  router.push({
-    path: `/boards/${boardCode.value}`,
-  })
-}
-
-// 취소
-const handleCancel = () => {
-  if (isEditing.value && articleId.value) {
-    router.push({
-      path: `/boards/${boardCode.value}/${articleId.value}`,
-    })
-  } else {
-    goToList()
-  }
-}
-
-// 초기화
-onMounted(async () => {
-  await fetchBoard()
-  if (isEditing.value) {
-    await fetchArticle()
+// 게시판 코드 변경 시 수정 모드에서 게시글 다시 로드
+watch(selectedBoardCode, () => {
+  if (isEditMode.value && selectedBoardCode.value) {
+    fetchPost()
   }
 })
 
-// boardCode 변경 감지
-watch(boardCode, () => {
-  fetchBoard()
+onMounted(async () => {
+  await fetchBoards()
+  if (isEditMode.value) {
+    await fetchPost()
+  }
 })
 </script>
 
 <template>
-  <div class="article-form-page">
-    <!-- 로딩 -->
-    <div v-if="isLoading" v-loading="true" class="loading-container" />
-
-    <template v-else>
-      <!-- 페이지 헤더 -->
-      <div class="page-header">
-        <div class="header-left">
-          <button class="btn-back" @click="handleCancel">
-            <i class="mdi mdi-arrow-left"></i>
-            뒤로
-          </button>
-          <div class="page-title">
-            <h1>{{ isEditing ? '게시글 수정' : '새 게시글 작성' }}</h1>
-            <span v-if="board" class="board-name">{{ board.name }}</span>
-          </div>
+  <div class="post-form-page">
+    <!-- 페이지 헤더 -->
+    <div class="page-header">
+      <div class="header-left">
+        <button class="btn-back" @click="goBack">
+          <i class="mdi mdi-arrow-left"></i>
+        </button>
+        <div class="header-info">
+          <h1>
+            <i class="mdi mdi-text-box-outline"></i>
+            {{ pageTitle }}
+          </h1>
+          <p v-if="selectedBoard">{{ selectedBoard.name }}</p>
         </div>
-        <div class="header-actions">
-          <button class="btn-draft" :disabled="isSaving" @click="handleSaveDraft">
-            <i class="mdi mdi-content-save-outline"></i>
-            임시저장
-          </button>
-          <button class="btn-publish" :disabled="isSaving" @click="handlePublish">
-            <i class="mdi mdi-send-outline"></i>
-            {{ isEditing ? '저장 및 발행' : '발행하기' }}
-          </button>
+      </div>
+      <div class="header-actions">
+        <button class="btn-cancel" @click="goBack">
+          취소
+        </button>
+        <button class="btn-save" :disabled="isSaving" @click="savePost">
+          <i class="mdi" :class="isSaving ? 'mdi-loading mdi-spin' : (isEditMode ? 'mdi-content-save' : 'mdi-plus')"></i>
+          {{ isEditMode ? '저장' : '작성' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- 폼 컨텐츠 -->
+    <div v-loading="isLoading" class="form-container">
+      <!-- 게시판 선택 (수정 모드가 아닐 때만) -->
+      <div v-if="!isEditMode && boards.length > 1" class="form-section">
+        <h3 class="section-title">
+          <i class="mdi mdi-view-dashboard-outline"></i>
+          게시판 선택
+        </h3>
+        <div class="form-field">
+          <select v-model="selectedBoardCode" class="field-select full">
+            <option value="" disabled>게시판을 선택하세요</option>
+            <option v-for="board in boards" :key="board.code" :value="board.code">
+              {{ board.name }} ({{ board.code }})
+            </option>
+          </select>
         </div>
       </div>
 
-      <!-- 폼 컨테이너 -->
-      <div class="form-container">
-        <!-- 제목 -->
-        <div class="form-section title-section">
+      <!-- 기본 정보 -->
+      <div class="form-section">
+        <h3 class="section-title">
+          <i class="mdi mdi-text-box-outline"></i>
+          기본 정보
+        </h3>
+
+        <div class="form-field">
+          <label class="field-label required">제목</label>
           <input
             v-model="formData.title"
             type="text"
-            class="title-input"
-            placeholder="제목을 입력하세요"
-            maxlength="300"
+            class="field-input"
+            placeholder="게시글 제목을 입력하세요"
           />
-          <span class="title-count">{{ formData.title.length }}/300</span>
         </div>
 
-        <!-- 본문 -->
-        <div class="form-section content-section">
-          <textarea
+        <div class="form-field">
+          <label class="field-label">내용</label>
+          <RichTextEditor
             v-model="formData.content"
-            class="content-textarea"
-            placeholder="내용을 입력하세요..."
-          ></textarea>
+            :site-code="currentSiteCode"
+            placeholder="게시글 내용을 입력하세요"
+            min-height="400px"
+          />
         </div>
+      </div>
 
-        <!-- 옵션 패널 -->
-        <div class="options-panel">
-          <div class="options-header">
-            <i class="mdi mdi-cog-outline"></i>
-            게시 옵션
+      <!-- 첨부파일 (게시판에서 첨부파일 기능이 활성화된 경우에만 표시) -->
+      <div v-if="selectedBoard?.useAttachment" class="form-section">
+        <h3 class="section-title">
+          <i class="mdi mdi-paperclip"></i>
+          첨부파일
+          <span class="attachment-limit">최대 {{ selectedBoard.attachmentLimit }}개</span>
+        </h3>
+        <FileUploader
+          v-model="attachments"
+          :site-code="currentSiteCode"
+          :max-files="selectedBoard.attachmentLimit"
+          :max-size="20"
+          accept="*/*"
+          multiple
+        />
+      </div>
+
+      <!-- 작성자 및 상태 -->
+      <div class="form-section">
+        <h3 class="section-title">
+          <i class="mdi mdi-account-cog-outline"></i>
+          작성자 및 상태
+        </h3>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label class="field-label">작성자</label>
+            <input
+              v-model="formData.author"
+              type="text"
+              class="field-input"
+              placeholder="작성자명"
+            />
           </div>
-
-          <div class="options-content">
-            <!-- 작성자 -->
-            <div class="option-item">
-              <label class="option-label">
-                <i class="mdi mdi-account-outline"></i>
-                작성자
-              </label>
-              <input
-                v-model="formData.author"
-                type="text"
-                class="option-input"
-                placeholder="작성자명 (선택)"
-                maxlength="50"
-              />
-            </div>
-
-            <!-- 상태 -->
-            <div class="option-item">
-              <label class="option-label">
-                <i class="mdi mdi-tag-outline"></i>
-                상태
-              </label>
-              <div class="status-options">
-                <label
-                  v-for="opt in statusOptions"
-                  :key="opt.value"
-                  class="status-option"
-                  :class="{ selected: formData.status === opt.value }"
-                >
-                  <input
-                    v-model="formData.status"
-                    type="radio"
-                    :value="opt.value"
-                    class="status-radio"
-                  />
-                  <span class="status-label">{{ opt.label }}</span>
-                </label>
-              </div>
-            </div>
-
-            <!-- 토글 옵션들 -->
-            <div class="option-item toggles">
-              <label class="toggle-option">
-                <input
-                  v-model="formData.isPinned"
-                  type="checkbox"
-                  class="toggle-checkbox"
-                />
-                <span class="toggle-switch"></span>
-                <span class="toggle-label">
-                  <i class="mdi mdi-pin"></i>
-                  상단 고정
-                </span>
-              </label>
-
-              <label class="toggle-option">
-                <input
-                  v-model="formData.isSecret"
-                  type="checkbox"
-                  class="toggle-checkbox"
-                />
-                <span class="toggle-switch"></span>
-                <span class="toggle-label">
-                  <i class="mdi mdi-lock-outline"></i>
-                  비밀글
-                </span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <!-- 하단 버튼 -->
-        <div class="form-footer">
-          <button class="btn-cancel" :disabled="isSaving" @click="handleCancel">
-            취소
-          </button>
-          <div class="footer-right">
-            <button class="btn-save-draft" :disabled="isSaving" @click="handleSaveDraft">
-              <i class="mdi mdi-content-save-outline"></i>
-              임시저장
-            </button>
-            <button class="btn-save-publish" :disabled="isSaving" @click="handlePublish">
-              <i class="mdi mdi-send-outline"></i>
-              {{ isEditing ? '저장' : '발행' }}
-            </button>
+          <div class="form-field">
+            <label class="field-label">상태</label>
+            <select v-model="formData.status" class="field-select">
+              <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
           </div>
         </div>
       </div>
-    </template>
+
+      <!-- 옵션 (게시판에서 활성화된 기능만 표시) -->
+      <div v-if="selectedBoard?.usePinned || selectedBoard?.useSecret" class="form-section">
+        <h3 class="section-title">
+          <i class="mdi mdi-cog-outline"></i>
+          옵션
+        </h3>
+
+        <div class="feature-options">
+          <label v-if="selectedBoard?.usePinned" class="toggle-option">
+            <input v-model="formData.isPinned" type="checkbox" class="toggle-checkbox" />
+            <span class="toggle-switch"></span>
+            <span class="toggle-label">
+              <i class="mdi mdi-pin"></i>
+              상단 고정
+            </span>
+            <span class="toggle-desc">이 게시글을 목록 상단에 고정합니다.</span>
+          </label>
+
+          <label v-if="selectedBoard?.useSecret" class="toggle-option">
+            <input v-model="formData.isSecret" type="checkbox" class="toggle-checkbox" />
+            <span class="toggle-switch"></span>
+            <span class="toggle-label">
+              <i class="mdi mdi-lock-outline"></i>
+              비밀글
+            </span>
+            <span class="toggle-desc">비밀글로 설정합니다.</span>
+          </label>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.article-form-page {
+.post-form-page {
   width: 100%;
   max-width: 900px;
   margin: 0 auto;
-}
-
-.loading-container {
-  min-height: 400px;
 }
 
 /* 페이지 헤더 */
@@ -333,7 +372,9 @@ watch(boardCode, () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .header-left {
@@ -343,286 +384,229 @@ watch(boardCode, () => {
 }
 
 .btn-back {
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
+  justify-content: center;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 10px;
-  font-size: 14px;
-  color: var(--text-secondary);
+  border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .btn-back:hover {
   background: var(--bg-tertiary);
-  color: var(--text-primary);
+  border-color: #6366f1;
 }
 
 .btn-back .mdi {
-  font-size: 18px;
+  font-size: 22px;
+  color: var(--text-secondary);
 }
 
-.page-title {
+.header-info h1 {
   display: flex;
   align-items: center;
-  gap: 12px;
-}
-
-.page-title h1 {
-  font-size: 20px;
+  gap: 10px;
+  font-size: 24px;
   font-weight: 700;
   color: var(--text-primary);
-  margin: 0;
+  margin: 0 0 4px 0;
 }
 
-.board-name {
-  font-size: 13px;
-  font-weight: 600;
-  padding: 4px 10px;
-  background: rgba(99, 102, 241, 0.1);
-  border-radius: 6px;
+.header-info h1 .mdi {
+  font-size: 28px;
   color: #6366f1;
+}
+
+.header-info p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
 }
 
 .header-actions {
   display: flex;
-  gap: 8px;
+  gap: 12px;
 }
 
-.btn-draft {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 20px;
+.btn-cancel {
+  padding: 12px 24px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.btn-draft:hover:not(:disabled) {
+.btn-cancel:hover {
   background: var(--bg-tertiary);
   color: var(--text-primary);
 }
 
-.btn-draft:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-publish {
+.btn-save {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 10px 20px;
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  gap: 8px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
   color: white;
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-}
-
-.btn-publish:hover:not(:disabled) {
-  transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
 }
 
-.btn-publish:disabled {
-  opacity: 0.5;
+.btn-save:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+}
+
+.btn-save:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
+}
+
+.btn-save .mdi {
+  font-size: 18px;
 }
 
 /* 폼 컨테이너 */
 .form-container {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+/* 폼 섹션 */
+.form-section {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 16px;
-  overflow: hidden;
+  padding: 24px;
 }
 
-/* 제목 섹션 */
-.title-section {
-  padding: 24px 32px;
-  border-bottom: 1px solid var(--border-color);
-  position: relative;
-}
-
-.title-input {
-  width: 100%;
-  padding: 0;
-  border: none;
-  background: transparent;
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--text-primary);
-  outline: none;
-}
-
-.title-input::placeholder {
-  color: var(--text-tertiary);
-}
-
-.title-count {
-  position: absolute;
-  right: 32px;
-  bottom: 8px;
-  font-size: 12px;
-  color: var(--text-tertiary);
-}
-
-/* 본문 섹션 */
-.content-section {
-  padding: 0;
-}
-
-.content-textarea {
-  width: 100%;
-  min-height: 400px;
-  padding: 24px 32px;
-  border: none;
-  background: transparent;
-  font-size: 16px;
-  line-height: 1.8;
-  color: var(--text-primary);
-  resize: vertical;
-  outline: none;
-}
-
-.content-textarea::placeholder {
-  color: var(--text-tertiary);
-}
-
-/* 옵션 패널 */
-.options-panel {
-  border-top: 1px solid var(--border-color);
-  background: var(--bg-tertiary);
-}
-
-.options-header {
+.section-title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 16px 32px;
-  font-size: 14px;
+  gap: 10px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
+  margin: 0 0 20px 0;
+  padding-bottom: 16px;
   border-bottom: 1px solid var(--border-color);
 }
 
-.options-header .mdi {
-  font-size: 18px;
+.section-title .mdi {
+  font-size: 20px;
   color: #6366f1;
 }
 
-.options-content {
-  padding: 20px 32px;
-  display: flex;
-  flex-direction: column;
+.attachment-limit {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
+
+/* 폼 필드 */
+.form-field {
+  margin-bottom: 20px;
+}
+
+.form-field:last-child {
+  margin-bottom: 0;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 20px;
 }
 
-.option-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
+.form-row .form-field {
+  margin-bottom: 0;
 }
 
-.option-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 100px;
+.field-label {
+  display: block;
   font-size: 14px;
   font-weight: 500;
   color: var(--text-secondary);
-  padding-top: 8px;
+  margin-bottom: 8px;
 }
 
-.option-label .mdi {
-  font-size: 18px;
+.field-label.required::after {
+  content: ' *';
+  color: #ef4444;
 }
 
-.option-input {
-  flex: 1;
-  max-width: 300px;
-  padding: 10px 14px;
-  background: var(--bg-secondary);
+.field-input,
+.field-textarea,
+.field-select {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--bg-primary);
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 14px;
   color: var(--text-primary);
   transition: all 0.2s ease;
 }
 
-.option-input:focus {
+.field-input:focus,
+.field-textarea:focus,
+.field-select:focus {
   outline: none;
   border-color: #6366f1;
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
-/* 상태 옵션 */
-.status-options {
+.field-input::placeholder,
+.field-textarea::placeholder {
+  color: var(--text-tertiary);
+}
+
+.field-textarea {
+  resize: vertical;
+  min-height: 300px;
+  line-height: 1.6;
+}
+
+.field-select.full {
+  max-width: 400px;
+}
+
+/* 옵션 토글 */
+.feature-options {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.status-option {
-  display: flex;
-  align-items: center;
-  padding: 8px 16px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.status-option:hover {
-  border-color: #6366f1;
-}
-
-.status-option.selected {
-  background: rgba(99, 102, 241, 0.1);
-  border-color: #6366f1;
-}
-
-.status-radio {
-  display: none;
-}
-
-.status-label {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.status-option.selected .status-label {
-  color: #6366f1;
-}
-
-/* 토글 옵션 */
-.option-item.toggles {
-  flex-wrap: wrap;
-  gap: 24px;
-  padding-top: 8px;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .toggle-option {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: flex-start;
+  gap: 14px;
   cursor: pointer;
+  padding: 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.toggle-option:hover {
+  border-color: #6366f1;
 }
 
 .toggle-checkbox {
@@ -630,22 +614,23 @@ watch(boardCode, () => {
 }
 
 .toggle-switch {
-  width: 44px;
-  height: 24px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
+  width: 48px;
+  height: 26px;
+  background: var(--bg-tertiary);
+  border-radius: 13px;
   position: relative;
   transition: all 0.2s ease;
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .toggle-switch::after {
   content: '';
   position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 18px;
-  height: 18px;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
   background: white;
   border-radius: 50%;
   transition: all 0.2s ease;
@@ -654,119 +639,30 @@ watch(boardCode, () => {
 
 .toggle-checkbox:checked + .toggle-switch {
   background: #6366f1;
-  border-color: #6366f1;
 }
 
 .toggle-checkbox:checked + .toggle-switch::after {
-  left: 22px;
+  left: 25px;
 }
 
 .toggle-label {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 14px;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
   color: var(--text-primary);
 }
 
 .toggle-label .mdi {
-  font-size: 18px;
+  font-size: 20px;
   color: var(--text-secondary);
 }
 
-/* 폼 하단 */
-.form-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 32px;
-  background: var(--bg-secondary);
-  border-top: 1px solid var(--border-color);
-}
-
-.btn-cancel {
-  padding: 12px 24px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-cancel:hover:not(:disabled) {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-}
-
-.btn-cancel:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.footer-right {
-  display: flex;
-  gap: 8px;
-}
-
-.btn-save-draft {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 12px 24px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-save-draft:hover:not(:disabled) {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-}
-
-.btn-save-draft:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-save-draft .mdi {
-  font-size: 18px;
-}
-
-.btn-save-publish {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 12px 24px;
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-save-publish:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
-}
-
-.btn-save-publish:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-save-publish .mdi {
-  font-size: 18px;
+.toggle-desc {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin-left: auto;
 }
 
 /* 반응형 */
@@ -777,77 +673,27 @@ watch(boardCode, () => {
     align-items: stretch;
   }
 
-  .header-left {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-  }
-
-  .page-title {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-
   .header-actions {
+    justify-content: stretch;
+  }
+
+  .header-actions button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .toggle-option {
     flex-wrap: wrap;
   }
 
-  .title-section {
-    padding: 20px;
-  }
-
-  .title-input {
-    font-size: 20px;
-  }
-
-  .content-textarea {
-    padding: 20px;
-    min-height: 300px;
-  }
-
-  .options-header {
-    padding: 16px 20px;
-  }
-
-  .options-content {
-    padding: 16px 20px;
-  }
-
-  .option-item {
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .option-label {
-    padding-top: 0;
-  }
-
-  .option-input {
-    max-width: none;
+  .toggle-desc {
     width: 100%;
-  }
-
-  .form-footer {
-    flex-direction: column;
-    gap: 12px;
-    padding: 16px 20px;
-  }
-
-  .btn-cancel {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .footer-right {
-    width: 100%;
-    flex-direction: column;
-  }
-
-  .btn-save-draft,
-  .btn-save-publish {
-    width: 100%;
-    justify-content: center;
+    margin-left: 62px;
+    margin-top: 4px;
   }
 }
 </style>

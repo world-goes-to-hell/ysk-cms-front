@@ -18,6 +18,7 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => !!user.value)
   const isAdmin = computed(() => user.value?.roles.includes('ROLE_ADMIN') ?? false)
   const username = computed(() => user.value?.name ?? user.value?.username ?? '')
+  const token = computed(() => localStorage.getItem('accessToken'))
 
   // 로컬 스토리지에서 사용자 정보 복원
   const initAuth = () => {
@@ -88,6 +89,11 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // 에러 초기화
+  const clearError = () => {
+    error.value = null
+  }
+
   // 초기화
   initAuth()
 
@@ -100,10 +106,12 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated,
     isAdmin,
     username,
+    token,
     // Actions
     login,
     logout,
     fetchUser,
     initAuth,
+    clearError,
   }
 })

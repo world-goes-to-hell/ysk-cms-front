@@ -9,14 +9,14 @@ export interface StatItem {
 }
 
 // 게시글 통계
-export interface PostStats {
+export interface ArticleStats {
   today: number
   thisWeek: number
   thisMonth: number
 }
 
 // 최신 게시글
-export interface RecentPost {
+export interface RecentArticle {
   id: number
   title: string
   board: string
@@ -43,8 +43,8 @@ export interface DashboardResponse {
   contents: StatItem
   visits: StatItem
   signups: StatItem
-  postStats: PostStats
-  recentPosts: RecentPost[]
+  articleStats: ArticleStats
+  recentArticles: RecentArticle[]
   recentActivities: RecentActivity[]
 }
 

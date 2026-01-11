@@ -1,21 +1,46 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useMenuStore } from '@/stores/menu'
+import { useChatStore } from '@/stores/chat'
 import type { MenuItem } from '@/types/menu'
+import ChatToggleButton from '@/components/chat/ChatToggleButton.vue'
+import ChatPanel from '@/components/chat/ChatPanel.vue'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
 const menuStore = useMenuStore()
+const chatStore = useChatStore()
 const isCollapse = ref(false)
 
-// 메뉴 불러오기
-onMounted(() => {
+// 메뉴 불러오기 및 WebSocket 연결
+onMounted(async () => {
   menuStore.fetchMenus('main')
+
+  // 인증된 상태면 WebSocket 연결
+  if (authStore.isAuthenticated && authStore.token) {
+    try {
+      await chatStore.connectWebSocket()
+      await chatStore.fetchRooms()
+    } catch (error) {
+      console.error('[DefaultLayout] 채팅 초기화 실패:', error)
+    }
+  }
+})
+
+// 로그아웃 시 WebSocket 연결 해제
+watch(() => authStore.isAuthenticated, (isAuth) => {
+  if (!isAuth) {
+    chatStore.disconnectWebSocket()
+  }
+})
+
+onUnmounted(() => {
+  chatStore.disconnectWebSocket()
 })
 
 // 블루라이트 레벨 라벨
@@ -353,6 +378,10 @@ const handleCommand = (command: string) => {
         <router-view />
       </main>
     </div>
+
+    <!-- 채팅 -->
+    <ChatToggleButton />
+    <ChatPanel />
   </div>
 </template>
 

@@ -1,13 +1,24 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getBoards } from '@/api/board'
-import { getPosts, createPost, updatePost, deletePost, getPost } from '@/api/board'
-import type { BoardDto, PostDto, PostListDto, PostCreateRequest, PostUpdateRequest, PostStatus } from '@/types/board'
+import { getPosts, deletePost } from '@/api/board'
+import type { BoardDto, PostListDto, PostStatus } from '@/types/board'
+import Pagination from '@/components/common/Pagination.vue'
 
 const route = useRoute()
-const BOARD_TYPE = 'GALLERY'
+const router = useRouter()
+
+// 라우트 메타에서 게시판 타입 코드 가져오기 (자동 설정)
+const boardType = computed(() => {
+  return (route.meta.boardType as string) || 'gallery'
+})
+
+// 라우트 메타에서 게시판 코드 가져오기 (BOARD 타입 메뉴일 경우)
+const fixedBoardCode = computed(() => {
+  return route.meta.boardCode as string | undefined
+})
 
 // 현재 사이트 코드
 const currentSiteCode = computed(() => {
@@ -22,36 +33,17 @@ const posts = ref<PostListDto[]>([])
 const isLoading = ref(false)
 const isBoardsLoading = ref(false)
 
-// 뷰 모드 (grid / list)
-const viewMode = ref<'grid' | 'list'>('grid')
-
 // 페이지네이션
 const pagination = ref({
   page: 1,
-  size: 12,
+  size: 10,
   total: 0,
+  totalPages: 0,
 })
 
 // 검색/필터
 const searchQuery = ref('')
 const filterStatus = ref<PostStatus | ''>('')
-
-// 다이얼로그
-const showFormDialog = ref(false)
-const showDetailDialog = ref(false)
-const isEditing = ref(false)
-const editingPost = ref<PostDto | null>(null)
-const currentPost = ref<PostDto | null>(null)
-
-// 폼 데이터
-const formData = ref<PostCreateRequest & { status?: PostStatus }>({
-  title: '',
-  content: '',
-  author: '',
-  isPinned: false,
-  isSecret: false,
-  status: 'DRAFT',
-})
 
 // 상태 옵션
 const statusOptions = [
@@ -65,14 +57,20 @@ const selectedBoard = computed(() => {
   return boards.value.find((b) => b.code === selectedBoardCode.value)
 })
 
-// 게시판 목록 조회 (GALLERY 타입만)
+// 게시판 목록 조회 (해당 타입만)
 const fetchBoards = async () => {
   isBoardsLoading.value = true
   try {
     const response = await getBoards(currentSiteCode.value)
-    boards.value = response.data.data.filter((b) => b.status === 'ACTIVE' && b.typeCode === BOARD_TYPE)
+    boards.value = response.data.data.filter((b) => b.status === 'ACTIVE' && b.typeCode === boardType.value)
+
+    // 게시판 자동 선택: fixedBoardCode가 있으면 해당 게시판, 없으면 첫 번째 게시판
     if (boards.value.length > 0 && !selectedBoardCode.value) {
-      selectedBoardCode.value = boards.value[0].code
+      if (fixedBoardCode.value && boards.value.some(b => b.code === fixedBoardCode.value)) {
+        selectedBoardCode.value = fixedBoardCode.value
+      } else {
+        selectedBoardCode.value = boards.value[0].code
+      }
     }
   } catch (error) {
     ElMessage.error('게시판 목록을 불러오는데 실패했습니다.')
@@ -96,6 +94,7 @@ const fetchPosts = async () => {
     const data = response.data.data
     posts.value = data.content
     pagination.value.total = data.totalElements
+    pagination.value.totalPages = data.totalPages
   } catch (error) {
     ElMessage.error('게시글 목록을 불러오는데 실패했습니다.')
   } finally {
@@ -121,82 +120,42 @@ const onPageChange = (page: number) => {
   fetchPosts()
 }
 
-// 새 게시글 폼 열기
-const openCreateDialog = () => {
-  isEditing.value = false
-  editingPost.value = null
-  formData.value = {
-    title: '',
-    content: '',
-    author: '',
-    isPinned: false,
-    isSecret: false,
-    status: 'DRAFT',
-  }
-  showFormDialog.value = true
+// 페이지 사이즈 변경
+const onSizeChange = (size: number) => {
+  pagination.value.size = size
+  pagination.value.page = 1
+  fetchPosts()
 }
 
-// 게시글 수정 폼 열기
-const openEditDialog = async (post: PostListDto) => {
-  try {
-    const response = await getPost(currentSiteCode.value, selectedBoardCode.value, post.id)
-    const postDetail = response.data.data
-    isEditing.value = true
-    editingPost.value = postDetail
-    formData.value = {
-      title: postDetail.title,
-      content: postDetail.content || '',
-      author: postDetail.author || '',
-      isPinned: postDetail.isPinned,
-      isSecret: postDetail.isSecret,
-      status: postDetail.status,
-    }
-    showFormDialog.value = true
-  } catch {
-    ElMessage.error('게시글 정보를 불러오는데 실패했습니다.')
-  }
+// 현재 라우트 경로 기준으로 관련 페이지 경로 생성
+const getBasePath = () => {
+  // 현재 경로에서 마지막 세그먼트 제거
+  const currentPath = route.path
+  return currentPath
 }
 
-// 게시글 상세 보기
-const openDetailDialog = async (post: PostListDto) => {
-  try {
-    const response = await getPost(currentSiteCode.value, selectedBoardCode.value, post.id)
-    currentPost.value = response.data.data
-    showDetailDialog.value = true
-  } catch {
-    ElMessage.error('게시글 정보를 불러오는데 실패했습니다.')
-  }
+// 새 게시글 작성 페이지로 이동
+const goToCreate = () => {
+  router.push({
+    path: `${getBasePath()}/form`,
+    query: { boardCode: selectedBoardCode.value }
+  })
 }
 
-// 게시글 저장
-const savePost = async () => {
-  if (!formData.value.title) {
-    ElMessage.warning('제목은 필수입니다.')
-    return
-  }
+// 게시글 수정 페이지로 이동
+const goToEdit = (postId: number) => {
+  router.push({
+    path: `${getBasePath()}/form/${postId}`,
+    query: { boardCode: selectedBoardCode.value }
+  })
+}
 
-  try {
-    if (isEditing.value && editingPost.value) {
-      const updateData: PostUpdateRequest = {
-        title: formData.value.title,
-        content: formData.value.content,
-        author: formData.value.author,
-        isPinned: formData.value.isPinned,
-        isSecret: formData.value.isSecret,
-        status: formData.value.status,
-      }
-      await updatePost(currentSiteCode.value, selectedBoardCode.value, editingPost.value.id, updateData)
-      ElMessage.success('갤러리가 수정되었습니다.')
-    } else {
-      await createPost(currentSiteCode.value, selectedBoardCode.value, formData.value)
-      ElMessage.success('갤러리가 생성되었습니다.')
-    }
-    showFormDialog.value = false
-    fetchPosts()
-  } catch (error: unknown) {
-    const axiosError = error as { response?: { data?: { message?: string } } }
-    ElMessage.error(axiosError.response?.data?.message || '저장에 실패했습니다.')
-  }
+// 게시글 상세 페이지로 이동
+const goToDetail = (postId: number) => {
+  router.push({
+    path: `${getBasePath()}/${postId}`,
+    query: { boardCode: selectedBoardCode.value }
+  })
 }
 
 // 게시글 삭제
@@ -234,6 +193,8 @@ const formatDate = (dateStr: string | null) => {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
   })
 }
 
@@ -242,6 +203,13 @@ watch(currentSiteCode, () => {
   selectedBoardCode.value = ''
   fetchBoards()
 })
+
+// 게시판 코드(fixedBoardCode) 변경 감지 - 같은 컴포넌트 내 메뉴 이동 시
+watch(fixedBoardCode, (newVal) => {
+  if (newVal && boards.value.some(b => b.code === newVal)) {
+    selectedBoardCode.value = newVal
+  }
+}, { immediate: false })
 
 onMounted(() => {
   fetchBoards()
@@ -266,28 +234,10 @@ watch(selectedBoardCode, (newVal) => {
         </h1>
         <p>갤러리 게시글을 관리하세요</p>
       </div>
-      <div class="header-actions">
-        <div class="view-toggle">
-          <button
-            class="toggle-btn"
-            :class="{ active: viewMode === 'grid' }"
-            @click="viewMode = 'grid'"
-          >
-            <i class="mdi mdi-view-grid-outline"></i>
-          </button>
-          <button
-            class="toggle-btn"
-            :class="{ active: viewMode === 'list' }"
-            @click="viewMode = 'list'"
-          >
-            <i class="mdi mdi-view-list-outline"></i>
-          </button>
-        </div>
-        <button class="btn-create" :disabled="!selectedBoardCode" @click="openCreateDialog">
-          <i class="mdi mdi-plus"></i>
-          새 갤러리 작성
-        </button>
-      </div>
+      <button class="btn-create" :disabled="!selectedBoardCode" @click="goToCreate">
+        <i class="mdi mdi-plus"></i>
+        새 갤러리 작성
+      </button>
     </div>
 
     <!-- 통계 카드 -->
@@ -311,18 +261,18 @@ watch(selectedBoardCode, (newVal) => {
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon draft">
-          <i class="mdi mdi-pencil-outline"></i>
+        <div class="stat-icon pinned">
+          <i class="mdi mdi-pin"></i>
         </div>
         <div class="stat-info">
-          <span class="stat-value">{{ posts.filter(p => p.status === 'DRAFT').length }}</span>
-          <span class="stat-label">임시저장</span>
+          <span class="stat-value">{{ posts.filter(p => p.isPinned).length }}</span>
+          <span class="stat-label">상단 고정</span>
         </div>
       </div>
     </div>
 
-    <!-- 게시판 선택 -->
-    <div v-if="boards.length > 1" class="board-selector">
+    <!-- 게시판 선택 (여러 갤러리 게시판이 있을 경우) -->
+    <div v-if="boards.length > 1 && !fixedBoardCode" class="board-selector">
       <div class="selector-label">
         <i class="mdi mdi-view-dashboard-outline"></i>
         게시판 선택
@@ -363,72 +313,8 @@ watch(selectedBoardCode, (newVal) => {
       </div>
     </div>
 
-    <!-- 갤러리 그리드 뷰 -->
-    <div v-if="selectedBoardCode && viewMode === 'grid'" v-loading="isLoading" class="gallery-container">
-      <div v-if="posts.length > 0" class="gallery-grid">
-        <div
-          v-for="post in posts"
-          :key="post.id"
-          class="gallery-card"
-          @click="openDetailDialog(post)"
-        >
-          <div class="card-thumbnail">
-            <i class="mdi mdi-image-outline"></i>
-            <div class="card-overlay">
-              <button class="overlay-btn" @click.stop="openEditDialog(post)">
-                <i class="mdi mdi-pencil-outline"></i>
-              </button>
-              <button class="overlay-btn delete" @click.stop="handleDelete(post)">
-                <i class="mdi mdi-trash-can-outline"></i>
-              </button>
-            </div>
-          </div>
-          <div class="card-content">
-            <h3 class="card-title">{{ post.title }}</h3>
-            <div class="card-meta">
-              <span class="card-author">{{ post.author || '익명' }}</span>
-              <span class="card-date">{{ formatDate(post.createdAt) }}</span>
-            </div>
-            <div class="card-footer">
-              <span class="status-badge" :class="post.status.toLowerCase()">
-                {{ getStatusInfo(post.status).label }}
-              </span>
-              <span class="view-count">
-                <i class="mdi mdi-eye-outline"></i>
-                {{ post.viewCount }}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 빈 상태 -->
-      <div v-else-if="!isLoading" class="empty-state">
-        <div class="empty-icon">
-          <i class="mdi mdi-image-multiple-outline"></i>
-        </div>
-        <h3>갤러리가 없습니다</h3>
-        <p>새 갤러리를 작성해보세요</p>
-        <button class="btn-create-empty" @click="openCreateDialog">
-          <i class="mdi mdi-plus"></i>
-          첫 갤러리 작성하기
-        </button>
-      </div>
-
-      <!-- 페이지네이션 -->
-      <div v-if="posts.length > 0" class="pagination-wrapper">
-        <el-pagination
-          v-model:current-page="pagination.page"
-          :page-size="pagination.size"
-          :total="pagination.total"
-          layout="prev, pager, next"
-          @current-change="onPageChange"
-        />
-      </div>
-    </div>
-
-    <!-- 갤러리 리스트 뷰 -->
-    <div v-if="selectedBoardCode && viewMode === 'list'" v-loading="isLoading" class="posts-container">
+    <!-- 게시글 목록 테이블 -->
+    <div v-if="selectedBoardCode" v-loading="isLoading" class="posts-container">
       <div v-if="posts.length > 0" class="posts-table">
         <div class="table-header">
           <div class="col-info">갤러리 정보</div>
@@ -443,22 +329,32 @@ watch(selectedBoardCode, (newVal) => {
           v-for="post in posts"
           :key="post.id"
           class="table-row"
+          :class="{ pinned: post.isPinned }"
         >
+          <!-- 게시글 정보 -->
           <div class="col-info">
-            <div class="post-icon">
-              <i class="mdi mdi-image-outline"></i>
+            <div class="post-icon" :class="{ 'is-pinned': post.isPinned }">
+              <i v-if="post.isPinned" class="mdi mdi-pin"></i>
+              <i v-else class="mdi mdi-image-outline"></i>
             </div>
             <div class="post-details">
-              <h3 class="post-title" @click="openDetailDialog(post)">
+              <h3 class="post-title" @click="goToDetail(post.id)">
                 {{ post.title }}
               </h3>
+              <div class="post-badges">
+                <span v-if="post.isPinned" class="badge pinned">
+                  <i class="mdi mdi-pin"></i> 고정
+                </span>
+              </div>
             </div>
           </div>
 
+          <!-- 작성자 -->
           <div class="col-author">
-            <span class="author-name">{{ post.author || '익명' }}</span>
+            <span class="author-name">{{ post.author || '관리자' }}</span>
           </div>
 
+          <!-- 조회수 -->
           <div class="col-views">
             <span class="view-count">
               <i class="mdi mdi-eye-outline"></i>
@@ -466,18 +362,24 @@ watch(selectedBoardCode, (newVal) => {
             </span>
           </div>
 
+          <!-- 상태 -->
           <div class="col-status">
-            <span class="status-badge" :class="post.status.toLowerCase()">
+            <span
+              class="status-badge"
+              :class="post.status.toLowerCase()"
+            >
               {{ getStatusInfo(post.status).label }}
             </span>
           </div>
 
+          <!-- 작성일 -->
           <div class="col-date">
             <span class="date-text">{{ formatDate(post.createdAt) }}</span>
           </div>
 
+          <!-- 관리 버튼 -->
           <div class="col-actions">
-            <button class="action-btn edit" title="수정" @click="openEditDialog(post)">
+            <button class="action-btn edit" title="수정" @click="goToEdit(post.id)">
               <i class="mdi mdi-pencil-outline"></i>
             </button>
             <button class="action-btn delete" title="삭제" @click="handleDelete(post)">
@@ -487,25 +389,30 @@ watch(selectedBoardCode, (newVal) => {
         </div>
       </div>
 
+      <!-- 빈 상태 -->
       <div v-else-if="!isLoading" class="empty-state">
         <div class="empty-icon">
           <i class="mdi mdi-image-multiple-outline"></i>
         </div>
         <h3>갤러리가 없습니다</h3>
         <p>새 갤러리를 작성해보세요</p>
-        <button class="btn-create-empty" @click="openCreateDialog">
+        <button class="btn-create-empty" @click="goToCreate">
           <i class="mdi mdi-plus"></i>
           첫 갤러리 작성하기
         </button>
       </div>
 
+      <!-- 페이지네이션 -->
       <div v-if="posts.length > 0" class="pagination-wrapper">
-        <el-pagination
-          v-model:current-page="pagination.page"
+        <Pagination
+          :current-page="pagination.page"
+          :total-pages="pagination.totalPages"
+          :total-elements="pagination.total"
           :page-size="pagination.size"
-          :total="pagination.total"
-          layout="prev, pager, next"
-          @current-change="onPageChange"
+          :show-total="true"
+          :show-size-changer="true"
+          @page-change="onPageChange"
+          @size-change="onSizeChange"
         />
       </div>
     </div>
@@ -520,100 +427,6 @@ watch(selectedBoardCode, (newVal) => {
         <p>먼저 갤러리 타입의 게시판을 생성해주세요</p>
       </div>
     </div>
-
-    <!-- 게시글 생성/수정 다이얼로그 -->
-    <el-dialog
-      v-model="showFormDialog"
-      :title="isEditing ? '갤러리 수정' : '새 갤러리 작성'"
-      width="720px"
-      destroy-on-close
-      class="article-dialog"
-    >
-      <div class="dialog-form">
-        <div class="form-section">
-          <div class="form-field full">
-            <label class="field-label required">제목</label>
-            <input
-              v-model="formData.title"
-              type="text"
-              class="field-input"
-              placeholder="갤러리 제목을 입력하세요"
-            />
-          </div>
-        </div>
-
-        <div class="form-section">
-          <div class="form-field full">
-            <label class="field-label">내용</label>
-            <textarea
-              v-model="formData.content"
-              class="field-textarea"
-              placeholder="갤러리 내용을 입력하세요"
-              rows="8"
-            ></textarea>
-          </div>
-        </div>
-
-        <div class="form-section">
-          <div class="form-row">
-            <div class="form-field">
-              <label class="field-label">작성자</label>
-              <input
-                v-model="formData.author"
-                type="text"
-                class="field-input"
-                placeholder="작성자명"
-              />
-            </div>
-            <div class="form-field">
-              <label class="field-label">상태</label>
-              <select v-model="formData.status" class="field-select">
-                <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
-                  {{ opt.label }}
-                </option>
-              </select>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <template #footer>
-        <div class="dialog-footer">
-          <button class="btn-cancel" @click="showFormDialog = false">취소</button>
-          <button class="btn-save" @click="savePost">
-            <i class="mdi" :class="isEditing ? 'mdi-content-save' : 'mdi-plus'"></i>
-            {{ isEditing ? '저장' : '작성' }}
-          </button>
-        </div>
-      </template>
-    </el-dialog>
-
-    <!-- 게시글 상세 다이얼로그 -->
-    <el-dialog
-      v-model="showDetailDialog"
-      title="갤러리 상세"
-      width="800px"
-      destroy-on-close
-    >
-      <div v-if="currentPost" class="post-detail">
-        <div class="post-detail-header">
-          <div class="detail-badges">
-            <span class="status-badge" :class="currentPost.status.toLowerCase()">
-              {{ getStatusInfo(currentPost.status).label }}
-            </span>
-          </div>
-          <h2>{{ currentPost.title }}</h2>
-          <div class="post-meta">
-            <span><i class="mdi mdi-account-outline"></i> {{ currentPost.author || '익명' }}</span>
-            <span><i class="mdi mdi-eye-outline"></i> {{ currentPost.viewCount }}</span>
-            <span><i class="mdi mdi-calendar-outline"></i> {{ formatDate(currentPost.createdAt) }}</span>
-          </div>
-        </div>
-        <div class="post-detail-content">
-          <div v-html="currentPost.content || '내용이 없습니다.'" />
-        </div>
-      </div>
-    </el-dialog>
   </div>
 </template>
 
@@ -650,46 +463,6 @@ watch(selectedBoardCode, (newVal) => {
   font-size: 15px;
   color: var(--text-secondary);
   margin: 0;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.view-toggle {
-  display: flex;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.toggle-btn {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: var(--text-tertiary);
-  transition: all 0.2s ease;
-}
-
-.toggle-btn:hover {
-  color: var(--text-primary);
-}
-
-.toggle-btn.active {
-  background: #10b981;
-  color: white;
-}
-
-.toggle-btn .mdi {
-  font-size: 20px;
 }
 
 .btn-create {
@@ -763,7 +536,7 @@ watch(selectedBoardCode, (newVal) => {
   color: #10b981;
 }
 
-.stat-icon.draft {
+.stat-icon.pinned {
   background: rgba(245, 158, 11, 0.1);
   color: #f59e0b;
 }
@@ -929,123 +702,7 @@ watch(selectedBoardCode, (newVal) => {
   font-size: 18px;
 }
 
-/* 갤러리 그리드 */
-.gallery-container {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 16px;
-  padding: 24px;
-}
-
-.gallery-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
-}
-
-.gallery-card {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  overflow: hidden;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.gallery-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-}
-
-.card-thumbnail {
-  position: relative;
-  height: 160px;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(52, 211, 153, 0.1) 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.card-thumbnail > .mdi {
-  font-size: 48px;
-  color: #10b981;
-  opacity: 0.5;
-}
-
-.card-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.gallery-card:hover .card-overlay {
-  opacity: 1;
-}
-
-.overlay-btn {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: white;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  color: #10b981;
-  transition: all 0.2s ease;
-}
-
-.overlay-btn:hover {
-  transform: scale(1.1);
-}
-
-.overlay-btn.delete {
-  color: #ef4444;
-}
-
-.overlay-btn .mdi {
-  font-size: 20px;
-}
-
-.card-content {
-  padding: 16px;
-}
-
-.card-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 8px 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.card-meta {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--text-tertiary);
-  margin-bottom: 12px;
-}
-
-.card-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-/* 리스트 뷰 */
+/* 게시글 테이블 */
 .posts-container {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
@@ -1059,7 +716,7 @@ watch(selectedBoardCode, (newVal) => {
 
 .table-header {
   display: grid;
-  grid-template-columns: 1fr 100px 80px 90px 120px 100px;
+  grid-template-columns: 1fr 100px 80px 90px 140px 100px;
   gap: 16px;
   padding: 16px 24px;
   background: var(--bg-tertiary);
@@ -1073,7 +730,7 @@ watch(selectedBoardCode, (newVal) => {
 
 .table-row {
   display: grid;
-  grid-template-columns: 1fr 100px 80px 90px 120px 100px;
+  grid-template-columns: 1fr 100px 80px 90px 140px 100px;
   gap: 16px;
   padding: 20px 24px;
   align-items: center;
@@ -1089,6 +746,12 @@ watch(selectedBoardCode, (newVal) => {
   background: var(--bg-tertiary);
 }
 
+.table-row.pinned {
+  background: rgba(16, 185, 129, 0.05);
+  border-left: 3px solid #10b981;
+}
+
+/* 게시글 정보 */
 .col-info {
   display: flex;
   align-items: center;
@@ -1111,6 +774,14 @@ watch(selectedBoardCode, (newVal) => {
   color: #10b981;
 }
 
+.post-icon.is-pinned {
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.post-icon.is-pinned .mdi {
+  color: #f59e0b;
+}
+
 .post-details {
   min-width: 0;
 }
@@ -1128,11 +799,38 @@ watch(selectedBoardCode, (newVal) => {
   color: #10b981;
 }
 
+.post-badges {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.badge .mdi {
+  font-size: 12px;
+}
+
+.badge.pinned {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+}
+
+/* 작성자 */
 .author-name {
   font-size: 14px;
   color: var(--text-secondary);
 }
 
+/* 조회수 */
 .view-count {
   display: inline-flex;
   align-items: center;
@@ -1145,12 +843,13 @@ watch(selectedBoardCode, (newVal) => {
   font-size: 16px;
 }
 
+/* 상태 배지 */
 .status-badge {
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 11px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -1169,11 +868,13 @@ watch(selectedBoardCode, (newVal) => {
   color: #f59e0b;
 }
 
+/* 작성일 */
 .date-text {
   font-size: 13px;
   color: var(--text-tertiary);
 }
 
+/* 액션 버튼 */
 .col-actions {
   display: flex;
   gap: 8px;
@@ -1282,194 +983,19 @@ watch(selectedBoardCode, (newVal) => {
 .pagination-wrapper {
   display: flex;
   justify-content: center;
-  padding: 20px;
-  margin-top: 20px;
-}
-
-.posts-container .pagination-wrapper {
-  margin-top: 0;
-  background: var(--bg-primary);
+  padding: 24px;
   border-top: 1px solid var(--border-color);
 }
 
-/* 다이얼로그 폼 */
-.dialog-form {
-  padding: 8px 0;
-}
-
-.form-section {
-  margin-bottom: 24px;
-}
-
-.form-section:last-child {
-  margin-bottom: 0;
-}
-
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-.form-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.form-field.full {
-  grid-column: 1 / -1;
-}
-
-.field-label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.field-label.required::after {
-  content: ' *';
-  color: #ef4444;
-}
-
-.field-input,
-.field-textarea,
-.field-select {
-  padding: 10px 14px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  font-size: 14px;
-  color: var(--text-primary);
-  transition: all 0.2s ease;
-}
-
-.field-input:focus,
-.field-textarea:focus,
-.field-select:focus {
-  outline: none;
-  border-color: #10b981;
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
-}
-
-.field-textarea {
-  resize: vertical;
-  min-height: 160px;
-}
-
-/* 다이얼로그 푸터 */
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.btn-cancel {
-  padding: 10px 20px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-cancel:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-}
-
-.btn-save {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 24px;
-  background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
-  border: none;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  color: white;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-save:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-}
-
-.btn-save .mdi {
-  font-size: 18px;
-}
-
-/* 상세 보기 */
-.post-detail-header {
-  border-bottom: 1px solid var(--border-color);
-  padding-bottom: 16px;
-  margin-bottom: 24px;
-}
-
-.detail-badges {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.post-detail-header h2 {
-  font-size: 22px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 12px 0;
-}
-
-.post-meta {
-  display: flex;
-  gap: 16px;
-  font-size: 14px;
-  color: var(--text-secondary);
-}
-
-.post-meta span {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.post-meta .mdi {
-  font-size: 16px;
-}
-
-.post-detail-content {
-  min-height: 200px;
-  padding: 20px;
-  background: var(--bg-tertiary);
-  border-radius: 12px;
-  line-height: 1.8;
-  color: var(--text-primary);
-}
-
 /* 반응형 */
-@media (max-width: 1200px) {
-  .gallery-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
 @media (max-width: 1024px) {
   .stats-row {
     grid-template-columns: repeat(3, 1fr);
   }
 
-  .gallery-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
   .table-header,
   .table-row {
-    grid-template-columns: 1fr 90px 70px 80px 100px 90px;
+    grid-template-columns: 1fr 90px 70px 80px 120px 90px;
   }
 }
 
@@ -1479,21 +1005,12 @@ watch(selectedBoardCode, (newVal) => {
     gap: 16px;
   }
 
-  .header-actions {
-    width: 100%;
-    justify-content: space-between;
-  }
-
   .btn-create {
-    flex: 1;
+    width: 100%;
     justify-content: center;
   }
 
   .stats-row {
-    grid-template-columns: 1fr;
-  }
-
-  .gallery-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1555,10 +1072,6 @@ watch(selectedBoardCode, (newVal) => {
     justify-content: flex-end;
     padding-top: 12px;
     border-top: 1px solid var(--border-color);
-  }
-
-  .form-row {
-    grid-template-columns: 1fr;
   }
 }
 </style>

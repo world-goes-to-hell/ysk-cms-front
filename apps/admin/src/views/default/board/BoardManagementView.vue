@@ -38,6 +38,8 @@ const formData = ref<BoardCreateRequest & { status?: BoardStatus }>({
   useComment: true,
   useAttachment: true,
   attachmentLimit: 5,
+  useSecret: false,
+  usePinned: false,
   sortOrder: 0,
   routeConfig: {
     listUrl: '',
@@ -130,6 +132,8 @@ const openCreateDialog = () => {
     useComment: true,
     useAttachment: true,
     attachmentLimit: 5,
+    useSecret: false,
+    usePinned: false,
     sortOrder: boards.value.length,
     routeConfig: {
       listUrl: '',
@@ -200,6 +204,8 @@ const openEditDialog = async (board: BoardDto) => {
     useComment: board.useComment ?? true,
     useAttachment: board.useAttachment ?? true,
     attachmentLimit: board.attachmentLimit ?? 5,
+    useSecret: board.useSecret ?? false,
+    usePinned: board.usePinned ?? false,
     sortOrder: board.sortOrder ?? 0,
     status: board.status || 'ACTIVE',
     routeConfig: routeConfig || {
@@ -285,6 +291,7 @@ const createOrUpdateBoardMenu = async (boardCode: string, boardName: string, isN
         type: 'BOARD',
         url: config?.listUrl || `/boards/${boardCode}`,
         icon: typeIcon,
+        parentId: existingMenu.parentId ?? null, // 기존 부모 구조 유지
         componentPath: config?.listComponent || '',
         relatedRoutes: relatedRoutes.length > 0 ? JSON.stringify(relatedRoutes) : '',
       })
@@ -325,6 +332,8 @@ const saveBoard = async () => {
         useComment: formData.value.useComment,
         useAttachment: formData.value.useAttachment,
         attachmentLimit: formData.value.attachmentLimit,
+        useSecret: formData.value.useSecret,
+        usePinned: formData.value.usePinned,
         sortOrder: formData.value.sortOrder,
         status: formData.value.status,
         routeConfig: formData.value.routeConfig,
@@ -546,7 +555,13 @@ onMounted(() => {
               <span v-if="board.useAttachment" class="feature-tag">
                 <i class="mdi mdi-paperclip"></i> 첨부 {{ board.attachmentLimit }}개
               </span>
-              <span v-if="!board.useComment && !board.useAttachment" class="feature-tag none">
+              <span v-if="board.usePinned" class="feature-tag pinned">
+                <i class="mdi mdi-pin"></i> 고정
+              </span>
+              <span v-if="board.useSecret" class="feature-tag secret">
+                <i class="mdi mdi-lock-outline"></i> 비밀글
+              </span>
+              <span v-if="!board.useComment && !board.useAttachment && !board.usePinned && !board.useSecret" class="feature-tag none">
                 -
               </span>
             </div>
@@ -859,6 +874,35 @@ onMounted(() => {
           </div>
         </div>
 
+        <!-- 게시글 옵션 설정 -->
+        <div class="form-section">
+          <h4 class="section-title">
+            <i class="mdi mdi-text-box-check-outline"></i>
+            게시글 옵션
+            <span class="section-hint">(게시글 작성 시 사용할 수 있는 기능)</span>
+          </h4>
+          <div class="feature-options">
+            <label class="toggle-option">
+              <input v-model="formData.usePinned" type="checkbox" class="toggle-checkbox" />
+              <span class="toggle-switch"></span>
+              <span class="toggle-label">
+                <i class="mdi mdi-pin"></i>
+                상단 고정
+              </span>
+              <span class="toggle-hint">게시글을 목록 상단에 고정할 수 있습니다</span>
+            </label>
+            <label class="toggle-option">
+              <input v-model="formData.useSecret" type="checkbox" class="toggle-checkbox" />
+              <span class="toggle-switch"></span>
+              <span class="toggle-label">
+                <i class="mdi mdi-lock-outline"></i>
+                비밀글
+              </span>
+              <span class="toggle-hint">게시글을 비밀글로 설정할 수 있습니다</span>
+            </label>
+          </div>
+        </div>
+
         <!-- 추가 설정 (수정 시) -->
         <div v-if="isEditing" class="form-section">
           <h4 class="section-title">
@@ -1101,7 +1145,7 @@ onMounted(() => {
 
 .table-header {
   display: grid;
-  grid-template-columns: 1fr 100px 160px 100px 100px;
+  grid-template-columns: 1fr 100px 220px 100px 100px;
   gap: 16px;
   padding: 16px 24px;
   background: var(--bg-tertiary);
@@ -1115,7 +1159,7 @@ onMounted(() => {
 
 .table-row {
   display: grid;
-  grid-template-columns: 1fr 100px 160px 100px 100px;
+  grid-template-columns: 1fr 100px 220px 100px 100px;
   gap: 16px;
   padding: 20px 24px;
   align-items: center;
@@ -1221,6 +1265,16 @@ onMounted(() => {
 
 .feature-tag.none {
   color: var(--text-tertiary);
+}
+
+.feature-tag.pinned {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+}
+
+.feature-tag.secret {
+  background: rgba(139, 92, 246, 0.1);
+  color: #8b5cf6;
 }
 
 /* 상태 토글 */
@@ -1573,6 +1627,12 @@ onMounted(() => {
   color: var(--text-secondary);
 }
 
+.toggle-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+
 .attachment-limit {
   display: flex;
   align-items: center;
@@ -1738,7 +1798,7 @@ onMounted(() => {
 
   .table-header,
   .table-row {
-    grid-template-columns: 1fr 80px 140px 90px 90px;
+    grid-template-columns: 1fr 80px 180px 90px 90px;
   }
 }
 

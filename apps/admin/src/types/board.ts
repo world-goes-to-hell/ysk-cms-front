@@ -56,6 +56,8 @@ export interface BoardDto {
   useComment: boolean
   useAttachment: boolean
   attachmentLimit: number
+  useSecret: boolean // 비밀글 기능 사용 여부
+  usePinned: boolean // 상단고정 기능 사용 여부
   sortOrder: number
   status: BoardStatus
   createdAt?: string
@@ -81,6 +83,8 @@ export interface BoardCreateRequest {
   useComment?: boolean
   useAttachment?: boolean
   attachmentLimit?: number
+  useSecret?: boolean // 비밀글 기능 사용 여부
+  usePinned?: boolean // 상단고정 기능 사용 여부
   sortOrder?: number
   // 라우트 설정 (메뉴 테이블에 저장)
   routeConfig?: BoardRouteConfig
@@ -94,10 +98,22 @@ export interface BoardUpdateRequest {
   useComment?: boolean
   useAttachment?: boolean
   attachmentLimit?: number
+  useSecret?: boolean // 비밀글 기능 사용 여부
+  usePinned?: boolean // 상단고정 기능 사용 여부
   sortOrder?: number
   status?: BoardStatus
   // 라우트 설정 (메뉴 테이블에 저장)
   routeConfig?: BoardRouteConfig
+}
+
+// 첨부파일 DTO (간략)
+export interface AttachmentDto {
+  id: number
+  originalName: string
+  url: string
+  mimeType: string
+  fileSize: number
+  type: string
 }
 
 // 게시글 DTO
@@ -117,6 +133,7 @@ export interface PostDto {
   publishedAt: string | null
   createdAt: string
   updatedAt: string
+  attachments?: AttachmentDto[]
 }
 
 // 게시글 목록 DTO
@@ -141,6 +158,7 @@ export interface PostCreateRequest {
   isPinned?: boolean
   isSecret?: boolean
   status?: PostStatus
+  attachmentIds?: number[]
 }
 
 // 게시글 수정 요청
@@ -151,6 +169,7 @@ export interface PostUpdateRequest {
   isPinned?: boolean
   isSecret?: boolean
   status?: PostStatus
+  attachmentIds?: number[]
 }
 
 // 게시글 답변 요청 (Q&A용)

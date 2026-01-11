@@ -6,6 +6,9 @@ import type {
   TokenRefreshResponse,
   UserInfo,
   ApiResponse,
+  RegisterRequest,
+  RegisterResponse,
+  RoleDto,
 } from '@/types/auth'
 
 // 로그인
@@ -28,4 +31,14 @@ export const logout = () => {
   localStorage.removeItem('accessToken')
   localStorage.removeItem('refreshToken')
   localStorage.removeItem('user')
+}
+
+// 회원가입
+export const register = (data: RegisterRequest) => {
+  return api.post<ApiResponse<RegisterResponse>>('/auth/register', data)
+}
+
+// 역할 목록 조회
+export const getRoles = () => {
+  return api.get<ApiResponse<RoleDto[]>>('/auth/roles')
 }

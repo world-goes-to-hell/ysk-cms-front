@@ -41,3 +41,32 @@ export interface ApiResponse<T> {
   message: string
   data: T
 }
+
+// 회원가입 요청
+export interface RegisterRequest {
+  username: string
+  password: string
+  name: string
+  email: string
+  roleId: number
+  phone?: string
+  department?: string
+  position?: string
+}
+
+// 회원가입 응답
+export interface RegisterResponse {
+  id: number
+  username: string
+  name: string
+  email: string
+  status: string
+  message: string
+}
+
+// 역할 정보
+export interface RoleDto {
+  id: number
+  name: string
+  description: string
+}
