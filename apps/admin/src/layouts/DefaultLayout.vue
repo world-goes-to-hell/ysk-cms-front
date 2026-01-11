@@ -193,20 +193,84 @@ const handleCommand = (command: string) => {
               v-if="menu.children?.length && menuStore.isExpanded(menu.id) && !isCollapse"
               class="nav-submenu"
             >
-              <div
-                v-for="child in menu.children"
-                :key="child.id"
-                class="nav-item nav-item-child"
-                :class="{ active: route.path === child.url }"
-                @click.stop="handleMenuClick(child)"
-              >
-                <div class="nav-icon nav-icon-child">
-                  <i v-if="child.icon" :class="['mdi', child.icon]"></i>
-                  <span v-else class="nav-dot"></span>
+              <template v-for="child in menu.children" :key="child.id">
+                <!-- 2레벨 메뉴 아이템 -->
+                <div
+                  class="nav-item nav-item-child"
+                  :class="{ active: isMenuActive(child) && !child.children?.length, 'has-children': child.children?.length }"
+                  @click.stop="handleMenuClick(child)"
+                >
+                  <div class="nav-icon nav-icon-child">
+                    <i v-if="child.icon" :class="['mdi', child.icon]"></i>
+                    <span v-else class="nav-dot"></span>
+                  </div>
+                  <span class="nav-title">{{ child.name }}</span>
+                  <!-- 3레벨 자식이 있으면 화살표 표시 -->
+                  <el-icon
+                    v-if="child.children?.length"
+                    class="nav-arrow"
+                    :class="{ expanded: menuStore.isExpanded(child.id) }"
+                  >
+                    <ArrowRight />
+                  </el-icon>
+                  <div v-if="isMenuActive(child) && !child.children?.length" class="nav-indicator"></div>
                 </div>
-                <span class="nav-title">{{ child.name }}</span>
-                <div v-if="route.path === child.url" class="nav-indicator"></div>
-              </div>
+
+                <!-- 3레벨 서브메뉴 -->
+                <transition name="submenu">
+                  <div
+                    v-if="child.children?.length && menuStore.isExpanded(child.id)"
+                    class="nav-submenu nav-submenu-level3"
+                  >
+                    <template v-for="grandChild in child.children" :key="grandChild.id">
+                      <!-- 3레벨 메뉴 아이템 -->
+                      <div
+                        class="nav-item nav-item-grandchild"
+                        :class="{ active: isMenuActive(grandChild) && !grandChild.children?.length, 'has-children': grandChild.children?.length }"
+                        @click.stop="handleMenuClick(grandChild)"
+                      >
+                        <div class="nav-icon nav-icon-grandchild">
+                          <i v-if="grandChild.icon" :class="['mdi', grandChild.icon]"></i>
+                          <span v-else class="nav-dot nav-dot-small"></span>
+                        </div>
+                        <span class="nav-title">{{ grandChild.name }}</span>
+                        <!-- 4레벨 자식이 있으면 화살표 표시 -->
+                        <el-icon
+                          v-if="grandChild.children?.length"
+                          class="nav-arrow"
+                          :class="{ expanded: menuStore.isExpanded(grandChild.id) }"
+                        >
+                          <ArrowRight />
+                        </el-icon>
+                        <div v-if="isMenuActive(grandChild) && !grandChild.children?.length" class="nav-indicator"></div>
+                      </div>
+
+                      <!-- 4레벨 서브메뉴 -->
+                      <transition name="submenu">
+                        <div
+                          v-if="grandChild.children?.length && menuStore.isExpanded(grandChild.id)"
+                          class="nav-submenu nav-submenu-level4"
+                        >
+                          <div
+                            v-for="greatGrandChild in grandChild.children"
+                            :key="greatGrandChild.id"
+                            class="nav-item nav-item-great-grandchild"
+                            :class="{ active: route.path === greatGrandChild.url }"
+                            @click.stop="handleMenuClick(greatGrandChild)"
+                          >
+                            <div class="nav-icon nav-icon-great-grandchild">
+                              <i v-if="greatGrandChild.icon" :class="['mdi', greatGrandChild.icon]"></i>
+                              <span v-else class="nav-dot nav-dot-tiny"></span>
+                            </div>
+                            <span class="nav-title">{{ greatGrandChild.name }}</span>
+                            <div v-if="route.path === greatGrandChild.url" class="nav-indicator"></div>
+                          </div>
+                        </div>
+                      </transition>
+                    </template>
+                  </div>
+                </transition>
+              </template>
             </div>
           </transition>
         </template>
@@ -623,6 +687,217 @@ export default {
 .nav-item-child.active .nav-icon-child {
   background: transparent;
   box-shadow: none;
+}
+
+/* 3레벨 서브메뉴 */
+.nav-submenu-level3 {
+  position: relative;
+  padding-left: 20px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+  margin-left: 16px;
+  border-left: 2px solid rgba(129, 140, 248, 0.3);
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 0 8px 8px 0;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.nav-submenu-level3::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: linear-gradient(180deg, rgba(129, 140, 248, 0.5) 0%, rgba(129, 140, 248, 0.2) 100%);
+  border-radius: 2px;
+}
+
+.nav-item-grandchild {
+  padding: 8px 12px;
+  font-size: 13px;
+  position: relative;
+  margin-left: 4px;
+  border-radius: 6px;
+}
+
+.nav-item-grandchild::before {
+  content: '';
+  position: absolute;
+  left: -24px;
+  top: 50%;
+  width: 16px;
+  height: 2px;
+  background: rgba(129, 140, 248, 0.3);
+}
+
+.nav-icon-grandchild {
+  width: 24px;
+  height: 24px;
+  background: transparent;
+}
+
+.nav-icon-grandchild .mdi {
+  font-size: 14px;
+}
+
+.nav-dot-small {
+  width: 6px;
+  height: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: transparent;
+}
+
+.nav-item-grandchild:hover .nav-dot-small {
+  background: rgba(255, 255, 255, 0.4);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+.nav-item-grandchild.active .nav-dot-small {
+  background: #818cf8;
+  border-color: #818cf8;
+  box-shadow: 0 0 6px rgba(129, 140, 248, 0.6);
+}
+
+.nav-item-grandchild.active {
+  background: rgba(99, 102, 241, 0.15);
+}
+
+.nav-item-grandchild.active .nav-icon-grandchild {
+  background: transparent;
+  box-shadow: none;
+}
+
+.nav-item-grandchild:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* 3레벨 메뉴에서 자식이 있는 경우 */
+.nav-item-grandchild.has-children {
+  cursor: pointer;
+}
+
+.nav-item-grandchild.has-children:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-item-grandchild .nav-arrow {
+  margin-left: auto;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  transition: transform 0.2s ease;
+}
+
+.nav-item-grandchild .nav-arrow.expanded {
+  transform: rotate(90deg);
+  color: rgba(129, 140, 248, 0.8);
+}
+
+/* 4레벨 서브메뉴 */
+.nav-submenu-level4 {
+  position: relative;
+  padding-left: 16px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+  margin-left: 12px;
+  border-left: 2px solid rgba(6, 182, 212, 0.3);
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 0 6px 6px 0;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.nav-submenu-level4::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.5) 0%, rgba(6, 182, 212, 0.2) 100%);
+  border-radius: 2px;
+}
+
+.nav-item-great-grandchild {
+  padding: 6px 10px;
+  font-size: 12px;
+  position: relative;
+  margin-left: 4px;
+  border-radius: 4px;
+}
+
+.nav-item-great-grandchild::before {
+  content: '';
+  position: absolute;
+  left: -20px;
+  top: 50%;
+  width: 12px;
+  height: 2px;
+  background: rgba(6, 182, 212, 0.3);
+}
+
+.nav-icon-great-grandchild {
+  width: 20px;
+  height: 20px;
+  background: transparent;
+}
+
+.nav-icon-great-grandchild .mdi {
+  font-size: 12px;
+}
+
+.nav-dot-tiny {
+  width: 4px;
+  height: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  background: transparent;
+}
+
+.nav-item-great-grandchild:hover .nav-dot-tiny {
+  background: rgba(255, 255, 255, 0.4);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+.nav-item-great-grandchild.active .nav-dot-tiny {
+  background: #06b6d4;
+  border-color: #06b6d4;
+  box-shadow: 0 0 6px rgba(6, 182, 212, 0.6);
+}
+
+.nav-item-great-grandchild.active {
+  background: rgba(6, 182, 212, 0.15);
+}
+
+.nav-item-great-grandchild.active .nav-icon-great-grandchild {
+  background: transparent;
+  box-shadow: none;
+}
+
+.nav-item-great-grandchild:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* 2레벨 메뉴에서 자식이 있는 경우 */
+.nav-item-child.has-children {
+  cursor: pointer;
+}
+
+.nav-item-child.has-children:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-item-child .nav-arrow {
+  margin-left: auto;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  transition: transform 0.2s ease;
+}
+
+.nav-item-child .nav-arrow.expanded {
+  transform: rotate(90deg);
+  color: rgba(129, 140, 248, 0.8);
 }
 
 /* 서브메뉴 트랜지션 */

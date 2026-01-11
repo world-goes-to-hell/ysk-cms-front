@@ -39,11 +39,16 @@ function relatedRouteToRoute(
     return null
   }
 
-  // 부모 URL 정규화
-  const basePath = normalizePath(parentUrl)
+  let fullPath: string
 
-  // 전체 경로 생성 (예: users + create = users/create)
-  const fullPath = basePath ? `${basePath}/${related.path}` : related.path
+  // related.path가 이미 절대 경로인 경우 (/ 또는 /adm으로 시작)
+  if (related.path.startsWith('/')) {
+    fullPath = normalizePath(related.path)
+  } else {
+    // 상대 경로인 경우 부모 URL과 합침
+    const basePath = normalizePath(parentUrl)
+    fullPath = basePath ? `${basePath}/${related.path}` : related.path
+  }
 
   return {
     path: fullPath,

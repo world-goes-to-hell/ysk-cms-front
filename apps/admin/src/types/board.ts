@@ -1,8 +1,46 @@
-// 게시판 타입
-export type BoardType = 'NORMAL' | 'GALLERY' | 'FAQ' | 'QNA' | 'NOTICE'
-
 // 게시판 상태
 export type BoardStatus = 'ACTIVE' | 'INACTIVE'
+
+// 게시판 타입 상태
+export type BoardTypeStatus = 'ACTIVE' | 'INACTIVE'
+
+// 게시판 타입 DTO
+export interface BoardTypeDto {
+  id: number
+  siteCode: string
+  code: string
+  name: string
+  description: string | null
+  icon: string
+  color: string
+  bgColor: string
+  sortOrder: number
+  status: BoardTypeStatus
+  createdAt?: string
+  updatedAt?: string
+}
+
+// 게시판 타입 생성 요청
+export interface BoardTypeCreateRequest {
+  code: string
+  name: string
+  description?: string
+  icon?: string
+  color?: string
+  bgColor?: string
+  sortOrder?: number
+}
+
+// 게시판 타입 수정 요청
+export interface BoardTypeUpdateRequest {
+  name?: string
+  description?: string
+  icon?: string
+  color?: string
+  bgColor?: string
+  sortOrder?: number
+  status?: BoardTypeStatus
+}
 
 // 게시글 상태
 export type PostStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
@@ -14,7 +52,7 @@ export interface BoardDto {
   code: string
   name: string
   description: string | null
-  type: BoardType
+  typeCode: string // 게시판 타입 코드 (BoardTypeDto.code)
   useComment: boolean
   useAttachment: boolean
   attachmentLimit: number
@@ -24,28 +62,42 @@ export interface BoardDto {
   updatedAt?: string
 }
 
+// 게시판 라우트 설정 (메뉴 테이블에 저장될 정보)
+export interface BoardRouteConfig {
+  listUrl: string
+  listComponent: string
+  detailUrl?: string
+  detailComponent?: string
+  formUrl?: string
+  formComponent?: string
+}
+
 // 게시판 생성 요청
 export interface BoardCreateRequest {
   code: string
   name: string
   description?: string
-  type?: BoardType
+  typeCode: string // 게시판 타입 코드
   useComment?: boolean
   useAttachment?: boolean
   attachmentLimit?: number
   sortOrder?: number
+  // 라우트 설정 (메뉴 테이블에 저장)
+  routeConfig?: BoardRouteConfig
 }
 
 // 게시판 수정 요청
 export interface BoardUpdateRequest {
-  name: string
+  name?: string
   description?: string
-  type?: BoardType
+  typeCode?: string // 게시판 타입 코드
   useComment?: boolean
   useAttachment?: boolean
   attachmentLimit?: number
   sortOrder?: number
   status?: BoardStatus
+  // 라우트 설정 (메뉴 테이블에 저장)
+  routeConfig?: BoardRouteConfig
 }
 
 // 게시글 DTO

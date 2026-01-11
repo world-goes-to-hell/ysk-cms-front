@@ -2,8 +2,11 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getBoards, createBoard, updateBoard, deleteBoard } from '@/api/board'
-import type { BoardDto, BoardCreateRequest, BoardUpdateRequest, BoardType, BoardStatus } from '@/types/board'
+import { getBoards, createBoard, updateBoard, deleteBoard, getBoardTypes } from '@/api/board'
+import * as menuApi from '@/api/menu'
+import type { BoardDto, BoardCreateRequest, BoardUpdateRequest, BoardStatus, BoardTypeDto } from '@/types/board'
+import type { MenuItem, RelatedRoute } from '@/types/menu'
+import { viewPaths, getViewFileName } from '@/utils/viewModules'
 
 const route = useRoute()
 
@@ -15,9 +18,10 @@ const currentSiteCode = computed(() => {
 
 // 상태
 const boards = ref<BoardDto[]>([])
+const boardTypes = ref<BoardTypeDto[]>([])
 const isLoading = ref(false)
 const searchQuery = ref('')
-const filterType = ref<BoardType | ''>('')
+const filterTypeCode = ref('')
 const filterStatus = ref<BoardStatus | ''>('')
 
 // 다이얼로그
@@ -30,21 +34,51 @@ const formData = ref<BoardCreateRequest & { status?: BoardStatus }>({
   code: '',
   name: '',
   description: '',
-  type: 'NORMAL',
+  typeCode: '',
   useComment: true,
   useAttachment: true,
   attachmentLimit: 5,
   sortOrder: 0,
+  routeConfig: {
+    listUrl: '',
+    listComponent: '',
+    detailUrl: '',
+    detailComponent: '',
+    formUrl: '',
+    formComponent: '',
+  },
 })
 
-// 게시판 타입 옵션
-const boardTypeOptions = [
-  { value: 'NORMAL', label: '일반', icon: 'mdi-file-document-outline', color: '#6366f1', bgColor: 'rgba(99, 102, 241, 0.1)' },
-  { value: 'GALLERY', label: '갤러리', icon: 'mdi-image-multiple-outline', color: '#10b981', bgColor: 'rgba(16, 185, 129, 0.1)' },
-  { value: 'FAQ', label: 'FAQ', icon: 'mdi-frequently-asked-questions', color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.1)' },
-  { value: 'QNA', label: 'Q&A', icon: 'mdi-chat-question-outline', color: '#ef4444', bgColor: 'rgba(239, 68, 68, 0.1)' },
-  { value: 'NOTICE', label: '공지', icon: 'mdi-bullhorn-outline', color: '#8b5cf6', bgColor: 'rgba(139, 92, 246, 0.1)' },
-]
+// 컴포넌트 파일명 가져오기
+const getComponentName = (path: string): string => {
+  return getViewFileName(path)
+}
+
+// 게시판용 필터링된 뷰 경로 (board/board-${typeCode} 폴더)
+const filteredViewPaths = computed(() => {
+  const typeCode = formData.value.typeCode
+  if (!typeCode) return []
+
+  const siteCode = currentSiteCode.value
+  const boardFolder = `board-${typeCode.toLowerCase()}`
+
+  // sites/{siteCode}/board/board-{typeCode}/ 또는 default/board/board-{typeCode}/ 경로만 필터링
+  return viewPaths.filter(path => {
+    const sitePattern = `@/views/sites/${siteCode}/board/${boardFolder}/`
+    const defaultPattern = `@/views/default/board/${boardFolder}/`
+    return path.startsWith(sitePattern) || path.startsWith(defaultPattern)
+  })
+})
+
+// 게시판 타입 목록 조회
+const fetchBoardTypes = async () => {
+  try {
+    const response = await getBoardTypes(currentSiteCode.value)
+    boardTypes.value = response.data.data
+  } catch (error) {
+    console.error('[Board] 게시판 타입 목록 조회 실패:', error)
+  }
+}
 
 // 필터링된 게시판 목록
 const filteredBoards = computed(() => {
@@ -60,8 +94,8 @@ const filteredBoards = computed(() => {
     )
   }
 
-  if (filterType.value) {
-    result = result.filter((board) => board.type === filterType.value)
+  if (filterTypeCode.value) {
+    result = result.filter((board) => board.typeCode === filterTypeCode.value)
   }
 
   if (filterStatus.value) {
@@ -92,31 +126,187 @@ const openCreateDialog = () => {
     code: '',
     name: '',
     description: '',
-    type: 'NORMAL',
+    typeCode: boardTypes.value.length > 0 ? boardTypes.value[0]?.code || '' : '',
     useComment: true,
     useAttachment: true,
     attachmentLimit: 5,
     sortOrder: boards.value.length,
+    routeConfig: {
+      listUrl: '',
+      listComponent: '',
+      detailUrl: '',
+      detailComponent: '',
+      formUrl: '',
+      formComponent: '',
+    },
   }
   showFormDialog.value = true
 }
 
+// 메뉴에서 라우트 정보 가져오기
+const fetchMenuRouteConfig = async (boardCode: string) => {
+  try {
+    const response = await menuApi.getMenus(currentSiteCode.value)
+    const menus: MenuItem[] = response.data.data
+    const menu = menus.find(m => m.code === boardCode)
+
+    if (!menu) {
+      console.log('[Board] 해당 코드의 메뉴가 없습니다:', boardCode)
+      return null
+    }
+
+    // relatedRoutes 파싱
+    let relatedRoutes: RelatedRoute[] = []
+    if (menu.relatedRoutes) {
+      try {
+        relatedRoutes = JSON.parse(menu.relatedRoutes)
+      } catch {
+        console.warn('[Board] relatedRoutes 파싱 실패')
+      }
+    }
+
+    // 상세 페이지 찾기
+    const detailRoute = relatedRoutes.find(r => r.name === '상세' || r.path.includes(':id'))
+    // 작성 페이지 찾기
+    const formRoute = relatedRoutes.find(r => r.name === '작성' || r.path.includes('write') || r.path.includes('create'))
+
+    return {
+      listUrl: menu.url || '',
+      listComponent: menu.componentPath || '',
+      detailUrl: detailRoute?.path || '',
+      detailComponent: detailRoute?.componentPath || '',
+      formUrl: formRoute?.path || '',
+      formComponent: formRoute?.componentPath || '',
+    }
+  } catch (error) {
+    console.error('[Board] 메뉴 라우트 정보 조회 실패:', error)
+    return null
+  }
+}
+
 // 게시판 수정 폼 열기
-const openEditDialog = (board: BoardDto) => {
+const openEditDialog = async (board: BoardDto) => {
   isEditing.value = true
   editingBoard.value = board
+
+  // 메뉴에서 라우트 정보 가져오기
+  const routeConfig = await fetchMenuRouteConfig(board.code)
+
   formData.value = {
     code: board.code,
     name: board.name,
     description: board.description || '',
-    type: board.type || 'NORMAL',
+    typeCode: board.typeCode || '',
     useComment: board.useComment ?? true,
     useAttachment: board.useAttachment ?? true,
     attachmentLimit: board.attachmentLimit ?? 5,
     sortOrder: board.sortOrder ?? 0,
     status: board.status || 'ACTIVE',
+    routeConfig: routeConfig || {
+      listUrl: '',
+      listComponent: '',
+      detailUrl: '',
+      detailComponent: '',
+      formUrl: '',
+      formComponent: '',
+    },
   }
   showFormDialog.value = true
+}
+
+// routeConfig를 RelatedRoute[] 형식으로 변환
+const convertRouteConfigToRelatedRoutes = (): RelatedRoute[] => {
+  const routes: RelatedRoute[] = []
+  const config = formData.value.routeConfig
+
+  if (!config) return routes
+
+  // 목록 페이지
+  if (config.listUrl && config.listComponent) {
+    routes.push({
+      path: config.listUrl,
+      name: '목록',
+      componentPath: config.listComponent,
+    })
+  }
+
+  // 상세 페이지
+  if (config.detailUrl && config.detailComponent) {
+    routes.push({
+      path: config.detailUrl,
+      name: '상세',
+      componentPath: config.detailComponent,
+    })
+  }
+
+  // 작성/수정 페이지
+  if (config.formUrl && config.formComponent) {
+    routes.push({
+      path: config.formUrl,
+      name: '작성',
+      componentPath: config.formComponent,
+    })
+  }
+
+  return routes
+}
+
+// 게시판관리 부모 메뉴 코드 (하드코딩 또는 설정에서 가져올 수 있음)
+const BOARD_MANAGEMENT_MENU_CODE = 'boards'
+
+// 메뉴 생성 또는 업데이트
+const createOrUpdateBoardMenu = async (boardCode: string, boardName: string, isNew: boolean) => {
+  const relatedRoutes = convertRouteConfigToRelatedRoutes()
+  const config = formData.value.routeConfig
+
+  try {
+    // 메뉴 목록 조회
+    const response = await menuApi.getMenus(currentSiteCode.value)
+    const menus: MenuItem[] = response.data.data
+
+    // 게시판관리 부모 메뉴 찾기
+    const parentMenu = menus.find(menu => menu.code === BOARD_MANAGEMENT_MENU_CODE)
+    if (!parentMenu) {
+      console.warn('[Board] 게시판관리 부모 메뉴를 찾을 수 없습니다. 코드:', BOARD_MANAGEMENT_MENU_CODE)
+      return
+    }
+
+    // 해당 게시판 코드의 메뉴가 이미 있는지 확인
+    const existingMenu = menus.find(menu => menu.code === boardCode)
+
+    // 선택된 게시판 타입에서 아이콘 가져오기
+    const selectedType = boardTypes.value.find(t => t.code === formData.value.typeCode)
+    const typeIcon = selectedType?.icon || 'mdi-file-document-outline'
+
+    if (existingMenu) {
+      // 기존 메뉴 업데이트
+      await menuApi.updateMenu(currentSiteCode.value, existingMenu.id, {
+        name: boardName,
+        type: 'BOARD',
+        url: config?.listUrl || `/boards/${boardCode}`,
+        icon: typeIcon,
+        componentPath: config?.listComponent || '',
+        relatedRoutes: relatedRoutes.length > 0 ? JSON.stringify(relatedRoutes) : '',
+      })
+      console.log('[Board] 메뉴 업데이트 완료:', boardCode)
+    } else if (isNew) {
+      // 새 메뉴 생성 (게시판관리 하위에)
+      await menuApi.createMenu(currentSiteCode.value, {
+        name: boardName,
+        code: boardCode,
+        type: 'BOARD',
+        url: config?.listUrl || `/boards/${boardCode}`,
+        icon: typeIcon,
+        parentId: parentMenu.id,
+        status: 'ACTIVE',
+        componentPath: config?.listComponent || '',
+        relatedRoutes: relatedRoutes.length > 0 ? JSON.stringify(relatedRoutes) : '',
+      })
+      console.log('[Board] 메뉴 생성 완료:', boardCode, '(부모:', parentMenu.name, ')')
+    }
+  } catch (error) {
+    console.error('[Board] 메뉴 생성/업데이트 실패:', error)
+  }
 }
 
 // 게시판 저장
@@ -131,17 +321,26 @@ const saveBoard = async () => {
       const updateData: BoardUpdateRequest = {
         name: formData.value.name,
         description: formData.value.description,
-        type: formData.value.type,
+        typeCode: formData.value.typeCode,
         useComment: formData.value.useComment,
         useAttachment: formData.value.useAttachment,
         attachmentLimit: formData.value.attachmentLimit,
         sortOrder: formData.value.sortOrder,
         status: formData.value.status,
+        routeConfig: formData.value.routeConfig,
       }
       await updateBoard(currentSiteCode.value, editingBoard.value.code, updateData)
+
+      // 메뉴 업데이트
+      await createOrUpdateBoardMenu(editingBoard.value.code, formData.value.name, false)
+
       ElMessage.success('게시판이 수정되었습니다.')
     } else {
       await createBoard(currentSiteCode.value, formData.value)
+
+      // 메뉴 생성 (게시판관리 하위에)
+      await createOrUpdateBoardMenu(formData.value.code, formData.value.name, true)
+
       ElMessage.success('게시판이 생성되었습니다.')
     }
     showFormDialog.value = false
@@ -191,18 +390,28 @@ const toggleStatus = async (board: BoardDto) => {
 }
 
 // 게시판 타입 정보 가져오기
-const getTypeInfo = (type: BoardType | undefined) => {
-  if (!type) return boardTypeOptions[0]
-  return boardTypeOptions.find((opt) => opt.value === type) || boardTypeOptions[0]
+const getTypeInfo = (typeCode: string | undefined) => {
+  const defaultType = {
+    code: '',
+    name: '기본',
+    icon: 'mdi-file-document-outline',
+    color: '#6366f1',
+    bgColor: 'rgba(99, 102, 241, 0.1)',
+  }
+  if (!typeCode || boardTypes.value.length === 0) return defaultType
+  const found = boardTypes.value.find((t) => t.code === typeCode)
+  return found || defaultType
 }
 
 // 사이트 코드 변경 감지
 watch(currentSiteCode, () => {
   fetchBoards()
+  fetchBoardTypes()
 })
 
 onMounted(() => {
   fetchBoards()
+  fetchBoardTypes()
 })
 </script>
 
@@ -265,10 +474,10 @@ onMounted(() => {
         />
       </div>
       <div class="filter-group">
-        <select v-model="filterType" class="filter-select">
+        <select v-model="filterTypeCode" class="filter-select">
           <option value="">타입 전체</option>
-          <option v-for="opt in boardTypeOptions" :key="opt.value" :value="opt.value">
-            {{ opt.label }}
+          <option v-for="opt in boardTypes" :key="opt.code" :value="opt.code">
+            {{ opt.name }}
           </option>
         </select>
         <select v-model="filterStatus" class="filter-select">
@@ -302,11 +511,11 @@ onMounted(() => {
             <div
               class="board-icon"
               :style="{
-                backgroundColor: getTypeInfo(board.type).bgColor,
-                color: getTypeInfo(board.type).color
+                backgroundColor: getTypeInfo(board.typeCode).bgColor,
+                color: getTypeInfo(board.typeCode).color
               }"
             >
-              <i :class="['mdi', getTypeInfo(board.type).icon]"></i>
+              <i :class="['mdi', getTypeInfo(board.typeCode).icon]"></i>
             </div>
             <div class="board-details">
               <h3 class="board-name">{{ board.name }}</h3>
@@ -320,11 +529,11 @@ onMounted(() => {
             <span
               class="type-badge"
               :style="{
-                backgroundColor: getTypeInfo(board.type).bgColor,
-                color: getTypeInfo(board.type).color
+                backgroundColor: getTypeInfo(board.typeCode).bgColor,
+                color: getTypeInfo(board.typeCode).color
               }"
             >
-              {{ getTypeInfo(board.type).label }}
+              {{ getTypeInfo(board.typeCode).name }}
             </span>
           </div>
 
@@ -385,7 +594,7 @@ onMounted(() => {
     <el-dialog
       v-model="showFormDialog"
       :title="isEditing ? '게시판 수정' : '새 게시판 생성'"
-      width="600px"
+      width="800px"
       class="board-dialog"
       destroy-on-close
     >
@@ -435,25 +644,182 @@ onMounted(() => {
             <i class="mdi mdi-shape-outline"></i>
             게시판 타입
           </h4>
-          <div class="type-selector">
+          <div v-if="boardTypes.length > 0" class="type-selector">
             <label
-              v-for="opt in boardTypeOptions"
-              :key="opt.value"
+              v-for="opt in boardTypes"
+              :key="opt.code"
               class="type-option"
-              :class="{ selected: formData.type === opt.value }"
+              :class="{ selected: formData.typeCode === opt.code }"
             >
               <input
-                v-model="formData.type"
+                v-model="formData.typeCode"
                 type="radio"
-                :value="opt.value"
+                :value="opt.code"
                 class="type-radio"
               />
-              <div class="type-content">
+              <div class="type-content" :style="{ borderColor: formData.typeCode === opt.code ? opt.color : undefined }">
                 <i :class="['mdi', opt.icon]" :style="{ color: opt.color }"></i>
-                <span>{{ opt.label }}</span>
+                <span>{{ opt.name }}</span>
               </div>
             </label>
           </div>
+          <div v-else class="type-empty">
+            <i class="mdi mdi-alert-circle-outline"></i>
+            <span>등록된 게시판 타입이 없습니다. 먼저 게시판 타입을 등록해주세요.</span>
+          </div>
+        </div>
+
+        <!-- 라우트 설정 -->
+        <div class="form-section">
+          <h4 class="section-title">
+            <i class="mdi mdi-routes"></i>
+            라우트 설정
+            <span class="section-hint">(메뉴에 저장됨)</span>
+          </h4>
+
+          <!-- 게시판 타입 선택 안내 -->
+          <div v-if="!formData.typeCode" class="route-hint">
+            <i class="mdi mdi-information-outline"></i>
+            게시판 타입을 먼저 선택하면 해당 타입의 뷰 파일을 선택할 수 있습니다.
+            <br />
+            <span class="hint-path">경로: views/default/board/board-{typeCode}/ 또는 views/sites/{siteCode}/board/board-{typeCode}/</span>
+          </div>
+
+          <!-- 선택 가능한 뷰 파일 없음 안내 -->
+          <div v-else-if="filteredViewPaths.length === 0" class="route-hint warning">
+            <i class="mdi mdi-alert-outline"></i>
+            <code>board/board-{{ formData.typeCode?.toLowerCase() }}</code> 폴더에 뷰 파일이 없습니다.
+            <br />
+            <span class="hint-path">views/default/board/board-{{ formData.typeCode?.toLowerCase() }}/ 또는 views/sites/{{ currentSiteCode }}/board/board-{{ formData.typeCode?.toLowerCase() }}/ 폴더를 생성하세요.</span>
+          </div>
+
+          <!-- 목록 페이지 -->
+          <template v-else>
+            <div class="route-group">
+              <div class="route-group-title">
+                <i class="mdi mdi-format-list-bulleted"></i>
+                목록 페이지
+              </div>
+              <div class="form-row">
+                <div class="form-field">
+                  <label class="field-label">URL 경로</label>
+                  <input
+                    v-model="formData.routeConfig!.listUrl"
+                    type="text"
+                    class="field-input"
+                    placeholder="예: /boards/notice"
+                  />
+                </div>
+                <div class="form-field">
+                  <label class="field-label">컴포넌트</label>
+                  <el-select
+                    v-model="formData.routeConfig!.listComponent"
+                    filterable
+                    clearable
+                    placeholder="컴포넌트 검색..."
+                    class="component-select"
+                    popper-class="board-component-dropdown"
+                  >
+                    <el-option
+                      v-for="path in filteredViewPaths"
+                      :key="path"
+                      :label="path"
+                      :value="path"
+                    >
+                      <div class="component-option">
+                        <span class="component-name">{{ getComponentName(path) }}</span>
+                        <span class="component-path">{{ path }}</span>
+                      </div>
+                    </el-option>
+                  </el-select>
+                </div>
+              </div>
+            </div>
+
+            <!-- 상세 페이지 -->
+            <div class="route-group">
+              <div class="route-group-title">
+                <i class="mdi mdi-file-document-outline"></i>
+                상세 페이지
+              </div>
+              <div class="form-row">
+                <div class="form-field">
+                  <label class="field-label">URL 경로</label>
+                  <input
+                    v-model="formData.routeConfig!.detailUrl"
+                    type="text"
+                    class="field-input"
+                    placeholder="예: /boards/notice/:id"
+                  />
+                </div>
+                <div class="form-field">
+                  <label class="field-label">컴포넌트</label>
+                  <el-select
+                    v-model="formData.routeConfig!.detailComponent"
+                    filterable
+                    clearable
+                    placeholder="컴포넌트 검색..."
+                    class="component-select"
+                    popper-class="board-component-dropdown"
+                  >
+                    <el-option
+                      v-for="path in filteredViewPaths"
+                      :key="path"
+                      :label="path"
+                      :value="path"
+                    >
+                      <div class="component-option">
+                        <span class="component-name">{{ getComponentName(path) }}</span>
+                        <span class="component-path">{{ path }}</span>
+                      </div>
+                    </el-option>
+                  </el-select>
+                </div>
+              </div>
+            </div>
+
+            <!-- 작성/수정 페이지 -->
+            <div class="route-group">
+              <div class="route-group-title">
+                <i class="mdi mdi-pencil-outline"></i>
+                작성/수정 페이지
+              </div>
+              <div class="form-row">
+                <div class="form-field">
+                  <label class="field-label">URL 경로</label>
+                  <input
+                    v-model="formData.routeConfig!.formUrl"
+                    type="text"
+                    class="field-input"
+                    placeholder="예: /boards/notice/write"
+                  />
+                </div>
+                <div class="form-field">
+                  <label class="field-label">컴포넌트</label>
+                  <el-select
+                    v-model="formData.routeConfig!.formComponent"
+                    filterable
+                    clearable
+                    placeholder="컴포넌트 검색..."
+                    class="component-select"
+                    popper-class="board-component-dropdown"
+                  >
+                    <el-option
+                      v-for="path in filteredViewPaths"
+                      :key="path"
+                      :label="path"
+                      :value="path"
+                    >
+                      <div class="component-option">
+                        <span class="component-name">{{ getComponentName(path) }}</span>
+                        <span class="component-path">{{ path }}</span>
+                      </div>
+                    </el-option>
+                  </el-select>
+                </div>
+              </div>
+            </div>
+          </template>
         </div>
 
         <!-- 기능 설정 -->
@@ -1130,6 +1496,22 @@ onMounted(() => {
   color: var(--accent-primary);
 }
 
+.type-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  background: rgba(245, 158, 11, 0.05);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 10px;
+  font-size: 13px;
+  color: #f59e0b;
+}
+
+.type-empty .mdi {
+  font-size: 18px;
+}
+
 /* 기능 옵션 */
 .feature-options {
   display: flex;
@@ -1264,6 +1646,90 @@ onMounted(() => {
   font-size: 18px;
 }
 
+/* 라우트 설정 */
+.section-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+  margin-left: 8px;
+}
+
+.route-group {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.route-group:last-child {
+  margin-bottom: 0;
+}
+
+.route-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.route-group-title .mdi {
+  font-size: 16px;
+  color: var(--accent-primary);
+}
+
+/* 컴포넌트 선택 */
+.component-select {
+  width: 100%;
+}
+
+/* 라우트 힌트 */
+.route-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  background: rgba(99, 102, 241, 0.05);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.route-hint .mdi {
+  font-size: 16px;
+  color: var(--accent-primary);
+  margin-right: 6px;
+}
+
+.route-hint.warning {
+  background: rgba(245, 158, 11, 0.05);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.route-hint.warning .mdi {
+  color: #f59e0b;
+}
+
+.route-hint code {
+  background: rgba(99, 102, 241, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 12px;
+  color: var(--accent-primary);
+}
+
+.route-hint .hint-path {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-family: 'Monaco', 'Menlo', monospace;
+  margin-top: 4px;
+}
+
 /* 반응형 */
 @media (max-width: 1024px) {
   .stats-row {
@@ -1347,5 +1813,36 @@ onMounted(() => {
   .type-option {
     min-width: auto;
   }
+}
+</style>
+
+<!-- 드롭다운 스타일 (전역) -->
+<style>
+.board-component-dropdown .el-select-dropdown__item {
+  height: auto;
+  padding: 8px 12px;
+  line-height: 1.4;
+}
+
+.board-component-dropdown .component-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.board-component-dropdown .component-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.board-component-dropdown .component-path {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.board-component-dropdown .el-select-dropdown__item.hover .component-name,
+.board-component-dropdown .el-select-dropdown__item.selected .component-name {
+  color: #6366f1;
 }
 </style>

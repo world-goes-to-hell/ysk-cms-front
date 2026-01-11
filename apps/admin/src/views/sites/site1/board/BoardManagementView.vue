@@ -8,7 +8,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getBoards, createBoard, updateBoard, deleteBoard } from '@/api/board'
-import type { BoardDto, BoardCreateRequest, BoardUpdateRequest, BoardType, BoardStatus } from '@/types/board'
+import type { BoardDto, BoardCreateRequest, BoardUpdateRequest, BoardStatus } from '@/types/board'
 
 const route = useRoute()
 
@@ -30,7 +30,7 @@ const formData = ref<BoardCreateRequest & { status?: BoardStatus }>({
   code: '',
   name: '',
   description: '',
-  type: 'NORMAL',
+  typeCode: 'NORMAL',
   useComment: true,
   useAttachment: true,
   attachmentLimit: 5,
@@ -91,7 +91,7 @@ const openCreateDialog = () => {
     code: '',
     name: '',
     description: '',
-    type: 'NORMAL',
+    typeCode: 'NORMAL',
     useComment: true,
     useAttachment: true,
     attachmentLimit: 5,
@@ -108,7 +108,7 @@ const openEditDialog = (board: BoardDto) => {
     code: board.code,
     name: board.name,
     description: board.description || '',
-    type: board.type,
+    typeCode: board.typeCode,
     useComment: board.useComment,
     useAttachment: board.useAttachment,
     attachmentLimit: board.attachmentLimit,
@@ -130,7 +130,7 @@ const saveBoard = async () => {
       const updateData: BoardUpdateRequest = {
         name: formData.value.name,
         description: formData.value.description,
-        type: formData.value.type,
+        typeCode: formData.value.typeCode,
         useComment: formData.value.useComment,
         useAttachment: formData.value.useAttachment,
         attachmentLimit: formData.value.attachmentLimit,
@@ -181,8 +181,8 @@ const toggleStatus = async (board: BoardDto) => {
   }
 }
 
-const getTypeInfo = (type: BoardType) => {
-  return boardTypeOptions.find((opt) => opt.value === type) || boardTypeOptions[0]
+const getTypeInfo = (typeCode: string) => {
+  return boardTypeOptions.find((opt) => opt.value === typeCode) || boardTypeOptions[0]
 }
 
 watch(currentSiteCode, () => fetchBoards())
@@ -257,8 +257,8 @@ onMounted(() => fetchBoards())
       <el-table-column prop="name" label="게시판명" min-width="150" />
       <el-table-column label="타입" width="100" align="center">
         <template #default="{ row }">
-          <el-tag :color="getTypeInfo(row.type).color" effect="dark" size="small">
-            {{ getTypeInfo(row.type).label }}
+          <el-tag :color="getTypeInfo(row.typeCode).color" effect="dark" size="small">
+            {{ getTypeInfo(row.typeCode).label }}
           </el-tag>
         </template>
       </el-table-column>
@@ -309,7 +309,7 @@ onMounted(() => fetchBoards())
           <el-input v-model="formData.description" type="textarea" :rows="2" />
         </el-form-item>
         <el-form-item label="타입">
-          <el-select v-model="formData.type" style="width: 100%">
+          <el-select v-model="formData.typeCode" style="width: 100%">
             <el-option
               v-for="opt in boardTypeOptions"
               :key="opt.value"

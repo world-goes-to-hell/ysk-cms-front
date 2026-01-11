@@ -5,6 +5,7 @@ import draggable from 'vuedraggable'
 import * as menuApi from '@/api/menu'
 import type { MenuItem, MenuCreateRequest, MenuUpdateRequest, MenuSortItem, RelatedRoute } from '@/types/menu'
 import { viewPaths, getViewFileName } from '@/utils/viewModules'
+import MenuTreeItem from '@/components/menu/MenuTreeItem.vue'
 
 // 상태
 const loading = ref(false)
@@ -454,140 +455,19 @@ onMounted(() => {
         @change="onDragChange"
         class="menu-tree"
       >
-        <template #item="{ element: menu }">
-          <div class="menu-item-wrapper parent">
-            <div
-              class="menu-item parent-item"
-              :class="{ 'has-children': menu.children?.length, 'is-inactive': menu.status === 'INACTIVE' }"
-              @click="menu.children?.length && toggleExpand(menu.id)"
-              style="cursor: pointer;"
-            >
-              <div class="menu-item-left">
-                <span class="drag-handle" @click.stop>
-                  <i class="mdi mdi-drag-vertical"></i>
-                </span>
-                <button
-                  v-if="menu.children?.length"
-                  class="expand-btn"
-                  @click.stop="toggleExpand(menu.id)"
-                >
-                  <i
-                    class="mdi"
-                    :class="isExpanded(menu.id) ? 'mdi-chevron-down' : 'mdi-chevron-right'"
-                  ></i>
-                </button>
-                <span v-else class="expand-placeholder"></span>
-                <span class="menu-icon parent-icon">
-                  <i v-if="menu.icon" :class="['mdi', menu.icon]"></i>
-                  <i v-else class="mdi mdi-folder-outline"></i>
-                </span>
-                <div class="menu-info">
-                  <div class="menu-info-top">
-                    <span class="menu-name">{{ menu.name }}</span>
-                    <span v-if="menu.children?.length" class="children-count">
-                      {{ menu.children.length }}
-                    </span>
-                  </div>
-                  <div class="menu-info-bottom">
-                    <span class="menu-type-badge" :class="menu.type.toLowerCase()">
-                      <i class="mdi" :class="getTypeIcon(menu.type)"></i>
-                      {{ menuTypes.find((t) => t.value === menu.type)?.label }}
-                    </span>
-                    <span v-if="menu.url" class="menu-url">
-                      <i class="mdi mdi-link-variant"></i>
-                      {{ menu.url }}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div class="menu-item-right">
-                <span class="menu-status-badge" :class="menu.status.toLowerCase()">
-                  <i class="mdi" :class="menu.status === 'ACTIVE' ? 'mdi-check-circle' : 'mdi-close-circle'"></i>
-                  {{ menu.status === 'ACTIVE' ? '활성' : '비활성' }}
-                </span>
-                <div class="menu-item-actions" @click.stop>
-                  <el-tooltip content="하위 메뉴 추가" placement="top">
-                    <button class="action-btn add" @click="openCreateDialog(menu)">
-                      <i class="mdi mdi-plus"></i>
-                    </button>
-                  </el-tooltip>
-                  <el-tooltip content="수정" placement="top">
-                    <button class="action-btn edit" @click="openEditDialog(menu)">
-                      <i class="mdi mdi-pencil"></i>
-                    </button>
-                  </el-tooltip>
-                  <el-tooltip content="삭제" placement="top">
-                    <button class="action-btn delete" @click="deleteMenu(menu)">
-                      <i class="mdi mdi-delete"></i>
-                    </button>
-                  </el-tooltip>
-                </div>
-              </div>
-            </div>
-
-            <!-- 하위 메뉴 -->
-            <transition name="expand">
-              <div v-if="menu.children?.length && isExpanded(menu.id)" class="menu-children">
-                <draggable
-                  v-model="menu.children"
-                  group="menus"
-                  item-key="id"
-                  handle=".drag-handle"
-                  ghost-class="ghost"
-                  @change="onDragChange"
-                >
-                  <template #item="{ element: child }">
-                    <div class="menu-item-wrapper child">
-                      <div class="menu-item child-item" :class="{ 'is-inactive': child.status === 'INACTIVE' }">
-                        <div class="menu-item-left">
-                          <span class="drag-handle">
-                            <i class="mdi mdi-drag-vertical"></i>
-                          </span>
-                          <span class="child-connector">
-                            <span class="connector-line"></span>
-                          </span>
-                          <span class="menu-icon child-icon">
-                            <i v-if="child.icon" :class="['mdi', child.icon]"></i>
-                            <i v-else class="mdi mdi-file-document-outline"></i>
-                          </span>
-                          <div class="menu-info">
-                            <div class="menu-info-top">
-                              <span class="menu-name">{{ child.name }}</span>
-                            </div>
-                            <div class="menu-info-bottom">
-                              <span class="menu-type-badge small" :class="child.type.toLowerCase()">
-                                {{ menuTypes.find((t) => t.value === child.type)?.label }}
-                              </span>
-                              <span v-if="child.url" class="menu-url">
-                                {{ child.url }}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <div class="menu-item-right">
-                          <span class="menu-status-badge small" :class="child.status.toLowerCase()">
-                            {{ child.status === 'ACTIVE' ? '활성' : '비활성' }}
-                          </span>
-                          <div class="menu-item-actions">
-                            <el-tooltip content="수정" placement="top">
-                              <button class="action-btn edit" @click="openEditDialog(child)">
-                                <i class="mdi mdi-pencil"></i>
-                              </button>
-                            </el-tooltip>
-                            <el-tooltip content="삭제" placement="top">
-                              <button class="action-btn delete" @click="deleteMenu(child)">
-                                <i class="mdi mdi-delete"></i>
-                              </button>
-                            </el-tooltip>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </template>
-                </draggable>
-              </div>
-            </transition>
-          </div>
+        <template #item="{ element: menu, index }">
+          <MenuTreeItem
+            :menu="menu"
+            :depth="0"
+            :expanded-keys="expandedKeys"
+            :menu-types="menuTypes"
+            @toggle-expand="toggleExpand"
+            @open-create-dialog="openCreateDialog"
+            @open-edit-dialog="openEditDialog"
+            @delete-menu="deleteMenu"
+            @drag-change="onDragChange"
+            @update:children="(children) => { menuTree[index] = { ...menuTree[index], children }; onDragChange() }"
+          />
         </template>
       </draggable>
     </div>
@@ -769,7 +649,8 @@ onMounted(() => {
             관련 라우트
           </div>
           <p class="section-desc">
-            메뉴에는 표시되지 않지만 라우터에 등록되는 하위 페이지들입니다. (예: 등록, 수정, 상세 페이지)
+            메뉴에는 표시되지 않지만 라우터에 등록되는 하위 페이지들입니다.<br>
+            경로는 상대 경로로 입력하세요. (예: <code>create</code>, <code>:id</code>, <code>:id/edit</code>)
           </p>
 
           <!-- 관련 라우트 목록 -->
@@ -836,7 +717,7 @@ onMounted(() => {
               </div>
               <div v-if="formData.url && route.path" class="route-preview">
                 <i class="mdi mdi-arrow-right"></i>
-                <span>{{ formData.url }}/{{ route.path }}</span>
+                <span>{{ route.path.startsWith('/') ? route.path : `${formData.url}/${route.path}` }}</span>
               </div>
             </div>
           </div>
@@ -1938,6 +1819,15 @@ onMounted(() => {
   color: var(--text-tertiary);
   margin: 0 0 12px;
   line-height: 1.5;
+}
+
+.section-desc code {
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--accent-primary);
 }
 
 /* 상태 토글 (큰 버전) */

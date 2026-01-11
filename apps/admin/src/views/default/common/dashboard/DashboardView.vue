@@ -79,9 +79,9 @@ const fetchDashboardData = async () => {
     if (response.data.success && response.data.data) {
       const data = response.data.data
       updateStats(data)
-      postStats.value = data.postStats
-      recentPosts.value = data.recentPosts
-      recentActivities.value = data.recentActivities
+      postStats.value = data.postStats || { today: 0, thisWeek: 0, thisMonth: 0 }
+      recentPosts.value = data.recentPosts || []
+      recentActivities.value = data.recentActivities || []
     }
   } catch (error) {
     console.error('대시보드 데이터 로드 실패:', error)

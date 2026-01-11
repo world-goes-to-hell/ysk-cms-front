@@ -19,4 +19,8 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  // 👇 이거 추가!
+  build: {
+    cssCodeSplit: false,
+  },
 })
