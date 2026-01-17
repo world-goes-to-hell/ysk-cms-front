@@ -329,7 +329,6 @@ onMounted(() => {
 <style scoped>
 .roles-page {
   width: 100%;
-  max-width: 1200px;
 }
 
 /* 페이지 헤더 */

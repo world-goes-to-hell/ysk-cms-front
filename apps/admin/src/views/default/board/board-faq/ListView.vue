@@ -433,7 +433,6 @@ watch(selectedBoardCode, (newVal) => {
 <style scoped>
 .article-management {
   width: 100%;
-  max-width: 1400px;
 }
 
 /* 페이지 헤더 */

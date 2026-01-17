@@ -548,7 +548,6 @@ onMounted(() => {
 <style scoped>
 .atch-file-page {
   width: 100%;
-  max-width: 1400px;
 }
 
 /* 페이지 헤더 */

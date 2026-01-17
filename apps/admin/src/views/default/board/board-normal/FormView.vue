@@ -363,7 +363,7 @@ onMounted(async () => {
 <style scoped>
 .post-form-page {
   width: 100%;
-  max-width: 900px;
+  max-width: 1200px;
   margin: 0 auto;
 }
 

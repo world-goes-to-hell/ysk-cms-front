@@ -298,7 +298,6 @@ onMounted(() => {
 <style scoped>
 .activity-log-page {
   width: 100%;
-  max-width: 1400px;
 }
 
 /* 페이지 헤더 */

@@ -442,7 +442,6 @@ onMounted(() => {
 <style scoped>
 .board-type-management {
   width: 100%;
-  max-width: 1400px;
 }
 
 /* 페이지 헤더 */
