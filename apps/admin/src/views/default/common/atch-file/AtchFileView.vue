@@ -9,6 +9,7 @@ import {
   deleteAtchFile,
   downloadAtchFile,
 } from '@/api/atchFile'
+import { getFileUrl } from '@/api/index'
 import type { AtchFileListDto, AtchFileType } from '@/types/atchFile'
 
 const route = useRoute()
@@ -263,13 +264,13 @@ const handleDownload = async (file: AtchFileListDto) => {
 
 // 파일 미리보기 (새 탭)
 const handlePreview = (file: AtchFileListDto) => {
-  window.open(file.url, '_blank')
+  window.open(getFileUrl(file.url), '_blank')
 }
 
 // URL 복사
 const handleCopyUrl = async (file: AtchFileListDto) => {
   try {
-    await navigator.clipboard.writeText(file.url)
+    await navigator.clipboard.writeText(getFileUrl(file.url))
     ElMessage.success('URL이 클립보드에 복사되었습니다.')
   } catch (error) {
     ElMessage.error('URL 복사에 실패했습니다.')
@@ -420,7 +421,7 @@ onMounted(() => {
           <div class="file-preview" @click="handlePreview(file)">
             <img
               v-if="isImage(file.mimeType)"
-              :src="file.url"
+              :src="getFileUrl(file.url)"
               :alt="file.originalName"
               loading="lazy"
             />
@@ -471,7 +472,7 @@ onMounted(() => {
           <!-- 미리보기 -->
           <div class="col-preview">
             <div class="preview-thumb" @click="handlePreview(file)">
-              <img v-if="isImage(file.mimeType)" :src="file.url" :alt="file.originalName" />
+              <img v-if="isImage(file.mimeType)" :src="getFileUrl(file.url)" :alt="file.originalName" />
               <i v-else class="mdi" :class="getFileIcon(file.type)" :style="{ color: getFileColor(file.type) }"></i>
             </div>
           </div>

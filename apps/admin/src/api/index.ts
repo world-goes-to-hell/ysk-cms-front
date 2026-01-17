@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
+import router from '@/router'
 
 // API 기본 설정
 const api: AxiosInstance = axios.create({
@@ -33,6 +34,14 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+
+    // 현재 라우트의 menuId를 X-Menu-Id 헤더로 전송 (메뉴 기반 동적 권한 체크용)
+    const currentRoute = router.currentRoute.value
+    const menuId = currentRoute.meta?.menuId || currentRoute.meta?.parentMenuId
+    if (menuId) {
+      config.headers['X-Menu-Id'] = String(menuId)
+    }
+
     return config
   },
   (error) => {
@@ -112,5 +121,21 @@ api.interceptors.response.use(
     return Promise.reject(error)
   },
 )
+
+// 파일 URL을 전체 URL로 변환
+export const getFileUrl = (url: string | null | undefined): string => {
+  if (!url) return ''
+
+  // 이미 전체 URL인 경우 그대로 반환
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url
+  }
+
+  // API base URL에서 도메인 추출 (예: http://localhost:8080/api -> http://localhost:8080)
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api'
+  const baseUrl = apiBaseUrl.replace('/api', '')
+
+  return `${baseUrl}${url}`
+}
 
 export default api

@@ -1,19 +1,21 @@
 import { Client } from '@stomp/stompjs'
 import type { IMessage, StompSubscription } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
-import type { ChatMessage, ChatMessageRequest, TypingNotification, UnreadCountNotification, NewMessageNotification, ChatRoom } from '@/types/chat'
+import type { ChatMessage, ChatMessageRequest, TypingNotification, UnreadCountNotification, NewMessageNotification, ChatRoom, ChatRoomUser } from '@/types/chat'
 
 type MessageHandler = (message: ChatMessage) => void
 type TypingHandler = (notification: TypingNotification) => void
 type UnreadHandler = (notification: UnreadCountNotification) => void
 type NewMessageHandler = (notification: NewMessageNotification) => void
 type NewRoomHandler = (room: ChatRoom) => void
+type ParticipantsHandler = (participants: ChatRoomUser[]) => void
 
 export class WebSocketService {
   private client: Client | null = null
   private subscriptions: Map<string, StompSubscription> = new Map()
   private messageHandlers: Map<number, MessageHandler[]> = new Map()
   private typingHandlers: Map<number, TypingHandler[]> = new Map()
+  private participantsHandlers: Map<number, ParticipantsHandler[]> = new Map()
   private unreadHandler: UnreadHandler | null = null
   private newMessageHandler: NewMessageHandler | null = null
   private newRoomHandler: NewRoomHandler | null = null
@@ -72,6 +74,7 @@ export class WebSocketService {
     this.subscriptions.clear()
     this.messageHandlers.clear()
     this.typingHandlers.clear()
+    this.participantsHandlers.clear()
     this.client?.deactivate()
     this.client = null
   }
@@ -135,6 +138,7 @@ export class WebSocketService {
 
     const roomKey = `room-${roomId}`
     const typingKey = `typing-${roomId}`
+    const participantsKey = `participants-${roomId}`
 
     // 이미 구독 중이면 스킵
     if (this.subscriptions.has(roomKey)) return
@@ -159,19 +163,35 @@ export class WebSocketService {
       }
     )
     this.subscriptions.set(typingKey, typingSubscription)
+
+    // 참여자 변경 구독
+    const participantsSubscription = this.client.subscribe(
+      `/topic/chat/room/${roomId}/participants`,
+      (message: IMessage) => {
+        const participants: ChatRoomUser[] = JSON.parse(message.body)
+        console.log('[WebSocket] Participants changed for room', roomId, participants)
+        const handlers = this.participantsHandlers.get(roomId) || []
+        handlers.forEach((handler) => handler(participants))
+      }
+    )
+    this.subscriptions.set(participantsKey, participantsSubscription)
   }
 
   // 채팅방 구독 해제
   unsubscribeFromRoom(roomId: number): void {
     const roomKey = `room-${roomId}`
     const typingKey = `typing-${roomId}`
+    const participantsKey = `participants-${roomId}`
 
     this.subscriptions.get(roomKey)?.unsubscribe()
     this.subscriptions.get(typingKey)?.unsubscribe()
+    this.subscriptions.get(participantsKey)?.unsubscribe()
     this.subscriptions.delete(roomKey)
     this.subscriptions.delete(typingKey)
+    this.subscriptions.delete(participantsKey)
     this.messageHandlers.delete(roomId)
     this.typingHandlers.delete(roomId)
+    this.participantsHandlers.delete(roomId)
   }
 
   // 메시지 핸들러 등록
@@ -186,6 +206,13 @@ export class WebSocketService {
     const handlers = this.typingHandlers.get(roomId) || []
     handlers.push(handler)
     this.typingHandlers.set(roomId, handlers)
+  }
+
+  // 참여자 변경 핸들러 등록
+  onParticipants(roomId: number, handler: ParticipantsHandler): void {
+    const handlers = this.participantsHandlers.get(roomId) || []
+    handlers.push(handler)
+    this.participantsHandlers.set(roomId, handlers)
   }
 
   // 읽지 않은 메시지 핸들러 등록

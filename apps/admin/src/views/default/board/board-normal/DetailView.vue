@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getBoards, getPost, deletePost, publishPost } from '@/api/board'
+import { getFileUrl } from '@/api/index'
 import type { BoardDto, PostDto, PostStatus } from '@/types/board'
 import DOMPurify from 'dompurify'
 import CommentSection from '@/components/comment/CommentSection.vue'
@@ -75,17 +76,6 @@ const formatFileSize = (bytes: number): string => {
   const sizes = ['Bytes', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
-// 파일 URL 가져오기
-const getFileUrl = (url: string): string => {
-  if (!url) return ''
-  if (url.startsWith('/api')) {
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api'
-    const hostUrl = baseUrl.replace(/\/api$/, '')
-    return hostUrl + url
-  }
-  return url
 }
 
 // 파일 아이콘 가져오기

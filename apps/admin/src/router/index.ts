@@ -83,6 +83,17 @@ export function resetDynamicRoutes() {
   // 기존 동적 라우트 제거는 복잡하므로, 보통 페이지 새로고침으로 처리
 }
 
+// 사용자 권한 확인 함수
+function hasRequiredRoles(userRoles: string[], requiredRoles: string[]): boolean {
+  if (!requiredRoles || requiredRoles.length === 0) return true
+  return requiredRoles.some(
+    (role) =>
+      userRoles.includes(role) ||
+      userRoles.includes(`ROLE_${role}`) ||
+      userRoles.includes(role.replace('ROLE_', ''))
+  )
+}
+
 // 네비게이션 가드
 router.beforeEach((to, _from, next) => {
   // 페이지 타이틀 설정
@@ -91,8 +102,11 @@ router.beforeEach((to, _from, next) => {
   const accessToken = localStorage.getItem('accessToken')
   const isAuthenticated = !!accessToken
 
+  // /adm 하위 경로는 모두 인증 필요 (로그인 페이지 제외)
+  const requiresAuth = to.path.startsWith('/adm') && to.path !== '/adm/login'
+
   // 인증이 필요한 페이지
-  if (to.meta.requiresAuth && !isAuthenticated) {
+  if (requiresAuth && !isAuthenticated) {
     next({ name: 'login', query: { redirect: to.fullPath } })
     return
   }
@@ -101,6 +115,20 @@ router.beforeEach((to, _from, next) => {
   if (to.meta.guest && isAuthenticated) {
     next({ path: '/adm/dashboard' })
     return
+  }
+
+  // 권한 체크 (인증된 사용자가 권한이 필요한 페이지에 접근 시)
+  if (isAuthenticated && to.meta.roles) {
+    const storedUser = localStorage.getItem('user')
+    const userRoles = storedUser ? (JSON.parse(storedUser).roles || []) : []
+    const requiredRoles = to.meta.roles as string[]
+
+    if (!hasRequiredRoles(userRoles, requiredRoles)) {
+      console.warn('[Router] 권한 없음:', to.path, '필요 권한:', requiredRoles, '사용자 권한:', userRoles)
+      // 권한 없으면 대시보드로 리다이렉트 (또는 403 페이지)
+      next({ path: '/adm/dashboard' })
+      return
+    }
   }
 
   // 동적 라우트가 등록되지 않았고, 인증된 사용자가 /adm 하위 페이지에 접근 시

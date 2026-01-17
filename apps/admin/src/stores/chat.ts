@@ -215,6 +215,20 @@ export const useChatStore = defineStore('chat', () => {
           typingUsers.value.delete(roomId)
         }
       })
+
+      // 참여자 변경 핸들러 등록
+      wsService.onParticipants(roomId, (participants) => {
+        console.log('[Chat] Participants updated for room', roomId, participants)
+        // 현재 방의 참여자 업데이트
+        if (currentRoom.value?.id === roomId) {
+          currentRoom.value.participants = participants
+        }
+        // 채팅방 목록의 참여자도 업데이트
+        const room = rooms.value.find((r) => r.id === roomId)
+        if (room) {
+          room.participants = participants
+        }
+      })
     } catch (error) {
       console.error('Failed to open room:', error)
     }

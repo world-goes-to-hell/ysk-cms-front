@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { uploadAtchFile, uploadMultipleAtchFiles, deleteAtchFile, downloadAtchFile } from '@/api/atchFile'
+import { getFileUrl } from '@/api/index'
 import type { AtchFileDto, AtchFileType } from '@/types/atchFile'
 
 const props = withDefaults(
@@ -67,19 +68,6 @@ const getFileIcon = (file: AtchFileDto): string => {
 // 이미지 여부 확인
 const isImage = (file: AtchFileDto): boolean => {
   return file.type === 'IMAGE' || file.mimeType?.startsWith('image/')
-}
-
-// 이미지 URL 생성 (API 프록시 URL을 전체 URL로 변환)
-const getImageUrl = (file: AtchFileDto): string => {
-  if (!file.url) return ''
-  // /api로 시작하면 백엔드 URL로 변환
-  if (file.url.startsWith('/api')) {
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api'
-    // baseURL에서 /api 제거하고 file.url 붙이기
-    const hostUrl = baseUrl.replace(/\/api$/, '')
-    return hostUrl + file.url
-  }
-  return file.url
 }
 
 // 파일 선택 다이얼로그 열기
@@ -253,7 +241,7 @@ const handleDownload = async (file: AtchFileDto) => {
       <div v-for="(file, index) in files" :key="file.id" class="file-item">
         <!-- 이미지 미리보기 -->
         <div v-if="showPreview && isImage(file)" class="file-preview">
-          <img :src="getImageUrl(file)" :alt="file.originalName" />
+          <img :src="getFileUrl(file.url)" :alt="file.originalName" />
         </div>
 
         <!-- 파일 아이콘 -->

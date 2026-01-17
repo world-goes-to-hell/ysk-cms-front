@@ -117,6 +117,11 @@ function menuToRoute(menu: MenuItem): RouteRecordRaw | null {
   // BOARD 타입 메뉴일 경우 code를 boardCode로 사용
   const boardCode = menu.type === 'BOARD' ? menu.code : null
 
+  // roles 파싱 (빈 문자열 처리)
+  const roles = menu.roles?.trim()
+    ? menu.roles.split(',').map((r) => r.trim()).filter((r) => r)
+    : null
+
   return {
     path,
     name: menu.code || `menu-${menu.id}`,
@@ -125,7 +130,7 @@ function menuToRoute(menu: MenuItem): RouteRecordRaw | null {
       title: menu.name,
       requiresAuth: true,
       menuId: menu.id,
-      roles: menu.roles?.split(',').map((r) => r.trim()) || null,
+      roles,
       ...(boardType && { boardType }), // 게시판 타입이 있으면 추가
       ...(boardCode && { boardCode }), // 게시판 코드가 있으면 추가
     },

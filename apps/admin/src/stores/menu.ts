@@ -81,7 +81,7 @@ export const useMenuStore = defineStore('menu', () => {
     return expandedMenus.value.has(menuId)
   }
 
-  // 모든 메뉴 펼치기
+  // 모든 메뉴 펼치기 (필터링된 메뉴 기준)
   const expandAll = () => {
     const collectIds = (items: MenuItem[]) => {
       items.forEach((item) => {
@@ -91,7 +91,7 @@ export const useMenuStore = defineStore('menu', () => {
         }
       })
     }
-    collectIds(menuItems.value)
+    collectIds(filteredMenus.value)
   }
 
   // 모든 메뉴 접기

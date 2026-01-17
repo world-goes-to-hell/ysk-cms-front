@@ -380,7 +380,6 @@ export default {
 </script>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700&display=swap');
 
 * {
   font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;

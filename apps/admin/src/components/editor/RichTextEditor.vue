@@ -39,6 +39,7 @@ import {
   type FileLoader,
 } from 'ckeditor5'
 import 'ckeditor5/ckeditor5.css'
+import { getFileUrl } from '@/api/index'
 
 const props = defineProps<{
   modelValue: string
@@ -59,15 +60,6 @@ const isReady = ref(false)
 const getApiBaseUrl = (): string => {
   const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api'
   return baseUrl.replace(/\/api$/, '') // '/api' 제거하고 호스트만 반환
-}
-
-// 파일 URL 변환 (상대 경로를 절대 경로로)
-const convertFileUrl = (url: string): string => {
-  if (!url) return ''
-  if (url.startsWith('/api')) {
-    return getApiBaseUrl() + url
-  }
-  return url
 }
 
 // 커스텀 업로드 어댑터 클래스
@@ -112,7 +104,7 @@ class CustomUploadAdapter implements UploadAdapter {
             }
 
             // URL을 절대 경로로 변환
-            const imageUrl = convertFileUrl(response.data.url)
+            const imageUrl = getFileUrl(response.data.url)
             resolve({
               default: imageUrl,
             })
