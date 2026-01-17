@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as pageApi from '@/api/page'
-import type { PageDto, PageListDto, PageCreateRequest, PageUpdateRequest, PageStatus } from '@/types/page'
-import RichTextEditor from '@/components/editor/RichTextEditor.vue'
+import type { PageListDto, PageStatus } from '@/types/page'
 
 const route = useRoute()
+const router = useRouter()
 
 // 현재 사이트 코드
 const currentSiteCode = computed(() => {
@@ -15,7 +15,6 @@ const currentSiteCode = computed(() => {
 
 // 상태
 const loading = ref(false)
-const saving = ref(false)
 const pages = ref<PageListDto[]>([])
 const totalElements = ref(0)
 const currentPage = ref(1)
@@ -25,24 +24,10 @@ const pageSize = ref(20)
 const searchKeyword = ref('')
 const statusFilter = ref<PageStatus | ''>('')
 
-// 모달 상태
-const dialogVisible = ref(false)
-const dialogMode = ref<'create' | 'edit'>('create')
-const editingPage = ref<PageDto | null>(null)
+// 미리보기 모달 상태
 const previewVisible = ref(false)
 const previewContent = ref('')
 const previewTitle = ref('')
-
-// 폼 데이터
-const formData = ref<PageCreateRequest>({
-  slug: '',
-  title: '',
-  content: '',
-  metaDescription: '',
-  metaKeywords: '',
-  status: 'DRAFT',
-  sortOrder: 0
-})
 
 // 상태 옵션
 const statusOptions = [
@@ -105,98 +90,16 @@ const handlePageChange = (page: number) => {
   fetchPages()
 }
 
-// 폼 초기화
-const resetForm = () => {
-  formData.value = {
-    slug: '',
-    title: '',
-    content: '',
-    metaDescription: '',
-    metaKeywords: '',
-    status: 'DRAFT',
-    sortOrder: 0
-  }
-  editingPage.value = null
+// 생성 페이지로 이동
+const goToCreatePage = () => {
+  const basePath = route.path.replace(/\/$/, '')
+  router.push(`${basePath}/form`)
 }
 
-// 생성 다이얼로그 열기
-const openCreateDialog = () => {
-  dialogMode.value = 'create'
-  resetForm()
-  dialogVisible.value = true
-}
-
-// 수정 다이얼로그 열기
-const openEditDialog = async (page: PageListDto) => {
-  loading.value = true
-  try {
-    const response = await pageApi.getPage(currentSiteCode.value, page.id)
-    if (response.data.success && response.data.data) {
-      editingPage.value = response.data.data
-      formData.value = {
-        slug: response.data.data.slug,
-        title: response.data.data.title,
-        content: response.data.data.content || '',
-        metaDescription: response.data.data.metaDescription || '',
-        metaKeywords: response.data.data.metaKeywords || '',
-        status: response.data.data.status,
-        sortOrder: response.data.data.sortOrder
-      }
-      dialogMode.value = 'edit'
-      dialogVisible.value = true
-    }
-  } catch (error) {
-    console.error('페이지 상세 조회 실패:', error)
-    ElMessage.error('페이지 정보를 불러오는데 실패했습니다.')
-  } finally {
-    loading.value = false
-  }
-}
-
-// 저장 (생성/수정)
-const handleSave = async () => {
-  if (!formData.value.title.trim()) {
-    ElMessage.warning('제목을 입력해주세요.')
-    return
-  }
-  if (!formData.value.slug.trim()) {
-    ElMessage.warning('슬러그를 입력해주세요.')
-    return
-  }
-
-  saving.value = true
-  try {
-    if (dialogMode.value === 'create') {
-      const response = await pageApi.createPage(currentSiteCode.value, formData.value)
-      if (response.data.success) {
-        ElMessage.success('페이지가 생성되었습니다.')
-        dialogVisible.value = false
-        fetchPages()
-      }
-    } else if (editingPage.value) {
-      const updateData: PageUpdateRequest = {
-        slug: formData.value.slug,
-        title: formData.value.title,
-        content: formData.value.content,
-        metaDescription: formData.value.metaDescription,
-        metaKeywords: formData.value.metaKeywords,
-        status: formData.value.status,
-        sortOrder: formData.value.sortOrder
-      }
-      const response = await pageApi.updatePage(currentSiteCode.value, editingPage.value.id, updateData)
-      if (response.data.success) {
-        ElMessage.success('페이지가 수정되었습니다.')
-        dialogVisible.value = false
-        fetchPages()
-      }
-    }
-  } catch (error: any) {
-    console.error('페이지 저장 실패:', error)
-    const message = error.response?.data?.message || '페이지 저장에 실패했습니다.'
-    ElMessage.error(message)
-  } finally {
-    saving.value = false
-  }
+// 수정 페이지로 이동
+const goToEditPage = (page: PageListDto) => {
+  const basePath = route.path.replace(/\/$/, '')
+  router.push(`${basePath}/form/${page.id}`)
 }
 
 // 삭제
@@ -275,20 +178,6 @@ const handlePreview = async (page: PageListDto) => {
   }
 }
 
-// 슬러그 자동 생성 (제목에서)
-const generateSlug = () => {
-  if (!formData.value.slug && formData.value.title) {
-    // 한글/영문/숫자만 남기고, 공백은 하이픈으로
-    const slug = formData.value.title
-      .toLowerCase()
-      .replace(/[^a-z0-9가-힣\s-]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-')
-      .substring(0, 100)
-    formData.value.slug = slug
-  }
-}
-
 // 날짜 포맷
 const formatDate = (dateString: string | null) => {
   if (!dateString) return '-'
@@ -318,7 +207,7 @@ onMounted(() => {
         </h1>
         <p>정적 페이지를 등록하고 관리합니다. 등록된 페이지는 사용자 화면에서 바로 확인할 수 있습니다.</p>
       </div>
-      <button class="btn-create" @click="openCreateDialog">
+      <button class="btn-create" @click="goToCreatePage">
         <span class="mdi mdi-plus"></span>
         새 페이지 추가
       </button>
@@ -381,7 +270,7 @@ onMounted(() => {
             <button class="btn-icon" title="미리보기" @click="handlePreview(page)">
               <span class="mdi mdi-eye-outline"></span>
             </button>
-            <button class="btn-icon" title="수정" @click="openEditDialog(page)">
+            <button class="btn-icon" title="수정" @click="goToEditPage(page)">
               <span class="mdi mdi-pencil-outline"></span>
             </button>
             <button
@@ -403,7 +292,7 @@ onMounted(() => {
       <div v-else class="empty-state">
         <span class="mdi mdi-file-document-outline"></span>
         <p>등록된 페이지가 없습니다.</p>
-        <button class="btn-create-empty" @click="openCreateDialog">
+        <button class="btn-create-empty" @click="goToCreatePage">
           <span class="mdi mdi-plus"></span>
           첫 페이지 만들기
         </button>
@@ -420,99 +309,6 @@ onMounted(() => {
         />
       </div>
     </div>
-
-    <!-- 생성/수정 다이얼로그 -->
-    <Teleport to="body">
-      <div v-if="dialogVisible" class="modal-overlay" @click.self="dialogVisible = false">
-        <div class="modal-container page-modal">
-          <div class="modal-header">
-            <h3>{{ dialogMode === 'create' ? '새 페이지 추가' : '페이지 수정' }}</h3>
-            <button class="btn-close" @click="dialogVisible = false">
-              <span class="mdi mdi-close"></span>
-            </button>
-          </div>
-          <div class="modal-body">
-            <div class="form-row">
-              <label class="form-label required">제목</label>
-              <input
-                v-model="formData.title"
-                type="text"
-                class="form-input"
-                placeholder="페이지 제목을 입력하세요"
-                @blur="generateSlug"
-              />
-            </div>
-            <div class="form-row">
-              <label class="form-label required">슬러그 (URL)</label>
-              <div class="slug-input-wrapper">
-                <span class="slug-prefix">/</span>
-                <input
-                  v-model="formData.slug"
-                  type="text"
-                  class="form-input slug-input"
-                  placeholder="page-url-slug"
-                />
-              </div>
-              <p class="form-hint">사용자가 접근할 URL 경로입니다. 영문, 숫자, 하이픈만 사용하세요.</p>
-            </div>
-            <div class="form-row">
-              <label class="form-label">컨텐츠</label>
-              <RichTextEditor
-                v-model="formData.content"
-                :site-code="currentSiteCode"
-                min-height="400px"
-                placeholder="페이지 내용을 입력하세요..."
-              />
-            </div>
-            <div class="form-row-group">
-              <div class="form-row">
-                <label class="form-label">상태</label>
-                <select v-model="formData.status" class="form-select">
-                  <option v-for="option in statusOptions" :key="option.value" :value="option.value">
-                    {{ option.label }}
-                  </option>
-                </select>
-              </div>
-              <div class="form-row">
-                <label class="form-label">정렬 순서</label>
-                <input
-                  v-model.number="formData.sortOrder"
-                  type="number"
-                  class="form-input"
-                  placeholder="0"
-                />
-              </div>
-            </div>
-            <div class="form-row">
-              <label class="form-label">메타 설명 (SEO)</label>
-              <textarea
-                v-model="formData.metaDescription"
-                class="form-textarea"
-                placeholder="검색 엔진에 표시될 페이지 설명 (최대 300자)"
-                maxlength="300"
-                rows="2"
-              ></textarea>
-            </div>
-            <div class="form-row">
-              <label class="form-label">메타 키워드 (SEO)</label>
-              <input
-                v-model="formData.metaKeywords"
-                type="text"
-                class="form-input"
-                placeholder="키워드1, 키워드2, 키워드3"
-              />
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="btn-secondary" @click="dialogVisible = false">취소</button>
-            <button class="btn-primary" :disabled="saving" @click="handleSave">
-              <span v-if="saving" class="mdi mdi-loading mdi-spin"></span>
-              {{ dialogMode === 'create' ? '생성' : '저장' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
 
     <!-- 미리보기 다이얼로그 -->
     <Teleport to="body">
@@ -794,7 +590,7 @@ onMounted(() => {
   border-top: 1px solid var(--border-color);
 }
 
-/* 모달 */
+/* 미리보기 모달 */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -818,10 +614,6 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-}
-
-.page-modal {
-  max-width: 900px;
 }
 
 .preview-modal {
@@ -877,126 +669,6 @@ onMounted(() => {
   background: var(--bg-secondary);
 }
 
-/* 폼 스타일 */
-.form-row {
-  margin-bottom: 20px;
-}
-
-.form-row-group {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
-.form-label {
-  display: block;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary);
-  margin-bottom: 8px;
-}
-
-.form-label.required::after {
-  content: '*';
-  color: #ef4444;
-  margin-left: 4px;
-}
-
-.form-input,
-.form-select,
-.form-textarea {
-  width: 100%;
-  padding: 12px 16px;
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  font-size: 14px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  transition: all 0.2s;
-}
-
-.form-input:focus,
-.form-select:focus,
-.form-textarea:focus {
-  outline: none;
-  border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-}
-
-.form-textarea {
-  resize: vertical;
-  min-height: 80px;
-}
-
-.form-hint {
-  font-size: 12px;
-  color: var(--text-tertiary);
-  margin-top: 6px;
-}
-
-.slug-input-wrapper {
-  display: flex;
-  align-items: center;
-}
-
-.slug-prefix {
-  padding: 12px 0 12px 16px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-right: none;
-  border-radius: 10px 0 0 10px;
-  color: var(--text-secondary);
-  font-family: 'Monaco', 'Menlo', monospace;
-}
-
-.slug-input {
-  border-radius: 0 10px 10px 0;
-  font-family: 'Monaco', 'Menlo', monospace;
-}
-
-/* 버튼 */
-.btn-primary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 24px;
-  background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-primary:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  padding: 12px 24px;
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-secondary:hover {
-  background: var(--bg-tertiary);
-}
-
 /* 미리보기 */
 .preview-body {
   background: white;
@@ -1028,6 +700,23 @@ onMounted(() => {
 
 .preview-content :deep(th) {
   background: #f5f5f5;
+}
+
+/* 버튼 */
+.btn-secondary {
+  padding: 12px 24px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+  background: var(--bg-tertiary);
 }
 
 /* 반응형 */
@@ -1077,10 +766,6 @@ onMounted(() => {
     justify-content: flex-end;
     padding-top: 12px;
     border-top: 1px solid var(--border-color);
-  }
-
-  .form-row-group {
-    grid-template-columns: 1fr;
   }
 }
 </style>
