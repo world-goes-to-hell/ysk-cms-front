@@ -10,6 +10,8 @@ export default defineConfig({
     vue(),
     vueDevTools(),
   ],
+  // 배포 시 /adm/ 경로 사용
+  base: '/adm/',
   define: {
     global: 'globalThis',
   },
@@ -22,7 +24,6 @@ export default defineConfig({
   server: {
     port: 5173,
   },
-  // 👇 이거 추가!
   build: {
     cssCodeSplit: false,
   },

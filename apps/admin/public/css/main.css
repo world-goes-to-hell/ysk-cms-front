@@ -1,0 +1,14 @@
+/* ==================== YSK CMS Admin - External CSS ==================== */
+/* 컴포넌트별 CSS를 여기에서 import 합니다. */
+
+/* Layouts */
+@import url('./layouts/default-layout.css');
+
+/* Components */
+@import url('./components/session-extend-dialog.css');
+@import url('./components/pagination.css');
+@import url('./components/chat.css');
+
+/* Views */
+@import url('./views/login.css');
+@import url('./views/board-views.css');

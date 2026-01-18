@@ -2,8 +2,8 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import * as pageApi from '@/api/page'
-import type { PageDto, PageCreateRequest, PageUpdateRequest, PageStatus } from '@/types/page'
+import * as contentsApi from '@/api/contents'
+import type { ContentsDto, ContentsCreateRequest, ContentsUpdateRequest, ContentsStatus } from '@/types/contents'
 import RichTextEditor from '@/components/editor/RichTextEditor.vue'
 
 const route = useRoute()
@@ -14,22 +14,22 @@ const currentSiteCode = computed(() => {
   return (route.params.siteId as string) || 'main'
 })
 
-// 페이지 ID (수정 모드일 경우)
-const pageId = computed(() => {
+// 컨텐츠 ID (수정 모드일 경우)
+const contentsId = computed(() => {
   const id = route.params.id as string
   return id ? parseInt(id, 10) : null
 })
 
 // 수정 모드 여부
-const isEditMode = computed(() => pageId.value !== null)
+const isEditMode = computed(() => contentsId.value !== null)
 
 // 상태
 const isLoading = ref(false)
 const isSaving = ref(false)
-const currentPage = ref<PageDto | null>(null)
+const currentContents = ref<ContentsDto | null>(null)
 
 // 폼 데이터
-const formData = ref<PageCreateRequest>({
+const formData = ref<ContentsCreateRequest>({
   slug: '',
   title: '',
   content: '',
@@ -48,18 +48,18 @@ const statusOptions = [
 
 // 페이지 제목
 const pageTitle = computed(() => {
-  return isEditMode.value ? '페이지 수정' : '새 페이지 작성'
+  return isEditMode.value ? '컨텐츠 수정' : '새 컨텐츠 작성'
 })
 
-// 페이지 상세 조회 (수정 모드)
-const fetchPage = async () => {
-  if (!pageId.value) return
+// 컨텐츠 상세 조회 (수정 모드)
+const fetchContents = async () => {
+  if (!contentsId.value) return
 
   isLoading.value = true
   try {
-    const response = await pageApi.getPage(currentSiteCode.value, pageId.value)
+    const response = await contentsApi.getContentsById(currentSiteCode.value, contentsId.value)
     if (response.data.success && response.data.data) {
-      currentPage.value = response.data.data
+      currentContents.value = response.data.data
       formData.value = {
         slug: response.data.data.slug,
         title: response.data.data.title,
@@ -71,8 +71,8 @@ const fetchPage = async () => {
       }
     }
   } catch (error) {
-    console.error('페이지 상세 조회 실패:', error)
-    ElMessage.error('페이지 정보를 불러오는데 실패했습니다.')
+    console.error('컨텐츠 상세 조회 실패:', error)
+    ElMessage.error('컨텐츠 정보를 불러오는데 실패했습니다.')
     goBack()
   } finally {
     isLoading.value = false
@@ -94,26 +94,26 @@ const handleSave = async (publish = false) => {
   try {
     const dataToSave = {
       ...formData.value,
-      status: publish ? 'PUBLISHED' as PageStatus : formData.value.status
+      status: publish ? 'PUBLISHED' as ContentsStatus : formData.value.status
     }
 
-    if (isEditMode.value && currentPage.value) {
-      const updateData: PageUpdateRequest = dataToSave
-      const response = await pageApi.updatePage(currentSiteCode.value, currentPage.value.id, updateData)
+    if (isEditMode.value && currentContents.value) {
+      const updateData: ContentsUpdateRequest = dataToSave
+      const response = await contentsApi.updateContents(currentSiteCode.value, currentContents.value.id, updateData)
       if (response.data.success) {
-        ElMessage.success(publish ? '페이지가 발행되었습니다.' : '페이지가 수정되었습니다.')
+        ElMessage.success(publish ? '컨텐츠가 발행되었습니다.' : '컨텐츠가 수정되었습니다.')
         goBack()
       }
     } else {
-      const response = await pageApi.createPage(currentSiteCode.value, dataToSave)
+      const response = await contentsApi.createContents(currentSiteCode.value, dataToSave)
       if (response.data.success) {
-        ElMessage.success(publish ? '페이지가 생성 및 발행되었습니다.' : '페이지가 생성되었습니다.')
+        ElMessage.success(publish ? '컨텐츠가 생성 및 발행되었습니다.' : '컨텐츠가 생성되었습니다.')
         goBack()
       }
     }
   } catch (error: any) {
-    console.error('페이지 저장 실패:', error)
-    const message = error.response?.data?.message || '페이지 저장에 실패했습니다.'
+    console.error('컨텐츠 저장 실패:', error)
+    const message = error.response?.data?.message || '컨텐츠 저장에 실패했습니다.'
     ElMessage.error(message)
   } finally {
     isSaving.value = false
@@ -143,14 +143,14 @@ const goBack = () => {
 
 onMounted(() => {
   if (isEditMode.value) {
-    fetchPage()
+    fetchContents()
   }
 })
 
 // 라우트 파라미터 변경 감지
 watch(() => route.params.id, () => {
   if (isEditMode.value) {
-    fetchPage()
+    fetchContents()
   }
 })
 </script>
@@ -168,10 +168,10 @@ watch(() => route.params.id, () => {
             <i class="mdi mdi-file-document-edit-outline"></i>
             {{ pageTitle }}
           </h1>
-          <p v-if="isEditMode && currentPage">
-            슬러그: <code>/{{ currentPage.slug }}</code>
+          <p v-if="isEditMode && currentContents">
+            슬러그: <code>/{{ currentContents.slug }}</code>
           </p>
-          <p v-else>새로운 정적 페이지를 작성합니다</p>
+          <p v-else>새로운 컨텐츠를 작성합니다</p>
         </div>
       </div>
       <div class="header-actions">
@@ -212,7 +212,7 @@ watch(() => route.params.id, () => {
             v-model="formData.title"
             type="text"
             class="field-input"
-            placeholder="페이지 제목을 입력하세요"
+            placeholder="컨텐츠 제목을 입력하세요"
             @blur="generateSlug"
           />
         </div>
@@ -222,7 +222,7 @@ watch(() => route.params.id, () => {
           <RichTextEditor
             v-model="formData.content"
             :site-code="currentSiteCode"
-            placeholder="페이지 내용을 입력하세요"
+            placeholder="컨텐츠 내용을 입력하세요"
             min-height="500px"
           />
         </div>

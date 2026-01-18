@@ -1,5 +1,5 @@
 import api from './index'
-import type { ChatRoom, ChatMessage, ChatRoomUser, ChatRoomCreateRequest } from '@/types/chat'
+import type { ChatRoom, ChatMessage, ChatRoomUser, ChatRoomCreateRequest, ChatInviteRequest } from '@/types/chat'
 import type { PageResponse } from '@/types/common'
 
 // 내 채팅방 목록 조회
@@ -36,3 +36,7 @@ export const leaveRoom = (roomId: number) => api.post(`/chat/rooms/${roomId}/lea
 
 // 채팅 가능한 사용자 목록
 export const getAvailableUsers = () => api.get<ChatRoomUser[]>('/chat/users')
+
+// 채팅방에 사용자 초대
+export const inviteUsers = (roomId: number, request: ChatInviteRequest) =>
+  api.post<ChatRoom>(`/chat/rooms/${roomId}/invite`, request)

@@ -99,10 +99,21 @@ const statusOptions = [
   { value: 'SUSPENDED', label: '정지' },
 ]
 
-// 역할 라벨
+// 역할 라벨 (권한 관리에서 등록한 설명 사용)
 const getRoleLabel = (roleName: string) => {
   const role = roles.value.find((r) => r.name === roleName)
   return role?.description || roleName
+}
+
+// 역할 아이콘
+const getRoleIcon = (roleName: string) => {
+  const icons: Record<string, string> = {
+    SUPER_ADMIN: 'mdi-shield-crown',
+    ADMIN: 'mdi-shield-account',
+    MANAGER: 'mdi-account-tie',
+    USER: 'mdi-account',
+  }
+  return icons[roleName] || 'mdi-account'
 }
 
 // 상태 라벨
@@ -567,6 +578,7 @@ onMounted(() => {
           <!-- 역할 -->
           <div class="col-role">
             <span class="role-badge" :class="user.role.toLowerCase()">
+              <i class="mdi" :class="getRoleIcon(user.role)"></i>
               {{ getRoleLabel(user.role) }}
             </span>
           </div>
@@ -1006,7 +1018,7 @@ onMounted(() => {
 
 .table-header {
   display: grid;
-  grid-template-columns: 70px 1fr 120px 100px 180px 130px;
+  grid-template-columns: 70px 1fr 160px 100px 180px 130px;
   gap: 16px;
   padding: 16px 24px;
   background: var(--bg-tertiary);
@@ -1020,7 +1032,7 @@ onMounted(() => {
 
 .table-row {
   display: grid;
-  grid-template-columns: 70px 1fr 120px 100px 180px 130px;
+  grid-template-columns: 70px 1fr 160px 100px 180px 130px;
   gap: 16px;
   padding: 16px 24px;
   align-items: center;
@@ -1091,30 +1103,141 @@ onMounted(() => {
 .role-badge {
   display: inline-flex;
   align-items: center;
-  padding: 6px 12px;
-  border-radius: 8px;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 10px;
   font-size: 12px;
   font-weight: 600;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
 }
 
+.role-badge .mdi {
+  font-size: 15px;
+  position: relative;
+  z-index: 1;
+}
+
+.role-badge::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.role-badge:hover::before {
+  opacity: 1;
+}
+
+/* SUPER_ADMIN - 빨강/보라 그라데이션 */
 .role-badge.super_admin {
-  background: rgba(239, 68, 68, 0.1);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(168, 85, 247, 0.12) 100%);
+  color: #dc2626;
+  border-color: rgba(239, 68, 68, 0.25);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.15);
+}
+
+.role-badge.super_admin::before {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.18) 0%, rgba(168, 85, 247, 0.18) 100%);
+}
+
+.role-badge.super_admin .mdi {
   color: #ef4444;
 }
 
+/* ADMIN - 주황/노랑 그라데이션 */
 .role-badge.admin {
-  background: rgba(245, 158, 11, 0.1);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(251, 191, 36, 0.12) 100%);
+  color: #d97706;
+  border-color: rgba(245, 158, 11, 0.25);
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.15);
+}
+
+.role-badge.admin::before {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.18) 0%, rgba(251, 191, 36, 0.18) 100%);
+}
+
+.role-badge.admin .mdi {
   color: #f59e0b;
 }
 
+/* MANAGER - 파랑 그라데이션 */
 .role-badge.manager {
-  background: rgba(59, 130, 246, 0.1);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(99, 102, 241, 0.12) 100%);
+  color: #2563eb;
+  border-color: rgba(59, 130, 246, 0.25);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
+}
+
+.role-badge.manager::before {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.18) 0%, rgba(99, 102, 241, 0.18) 100%);
+}
+
+.role-badge.manager .mdi {
   color: #3b82f6;
 }
 
+/* USER - 회색 그라데이션 */
 .role-badge.user {
-  background: rgba(107, 114, 128, 0.1);
+  background: linear-gradient(135deg, rgba(107, 114, 128, 0.1) 0%, rgba(156, 163, 175, 0.1) 100%);
+  color: #4b5563;
+  border-color: rgba(107, 114, 128, 0.2);
+  box-shadow: 0 2px 8px rgba(107, 114, 128, 0.1);
+}
+
+.role-badge.user::before {
+  background: linear-gradient(135deg, rgba(107, 114, 128, 0.15) 0%, rgba(156, 163, 175, 0.15) 100%);
+}
+
+.role-badge.user .mdi {
   color: #6b7280;
+}
+
+/* 다크모드 역할 배지 */
+:root.dark .role-badge.super_admin {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+:root.dark .role-badge.super_admin .mdi {
+  color: #f87171;
+}
+
+:root.dark .role-badge.admin {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(251, 191, 36, 0.2) 100%);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+:root.dark .role-badge.admin .mdi {
+  color: #fbbf24;
+}
+
+:root.dark .role-badge.manager {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(99, 102, 241, 0.2) 100%);
+  color: #60a5fa;
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+:root.dark .role-badge.manager .mdi {
+  color: #60a5fa;
+}
+
+:root.dark .role-badge.user {
+  background: linear-gradient(135deg, rgba(107, 114, 128, 0.2) 0%, rgba(156, 163, 175, 0.2) 100%);
+  color: #9ca3af;
+  border-color: rgba(107, 114, 128, 0.3);
+}
+
+:root.dark .role-badge.user .mdi {
+  color: #9ca3af;
 }
 
 /* 상태 배지 */
@@ -1556,7 +1679,7 @@ onMounted(() => {
 @media (max-width: 1024px) {
   .table-header,
   .table-row {
-    grid-template-columns: 60px 1fr 100px 90px 150px 120px;
+    grid-template-columns: 60px 1fr 140px 90px 150px 120px;
   }
 }
 

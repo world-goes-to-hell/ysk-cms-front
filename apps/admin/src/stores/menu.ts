@@ -57,14 +57,25 @@ export const useMenuStore = defineStore('menu', () => {
     return result
   })
 
+  // URL에서 /adm prefix 제거 (Vite base가 /adm/이므로)
+  const normalizeMenuUrl = (menuUrl: string): string => {
+    if (menuUrl.startsWith('/adm/')) {
+      return menuUrl.substring(4) // '/adm/dashboard' -> '/dashboard'
+    }
+    if (menuUrl.startsWith('/adm')) {
+      return menuUrl.substring(4) || '/' // '/adm' -> '/'
+    }
+    return menuUrl
+  }
+
   // URL로 메뉴 찾기
   const findMenuByUrl = (url: string): MenuItem | undefined => {
     // / 경로는 /dashboard 메뉴와 매칭
     if (url === '/') {
-      return flatMenus.value.find((menu) => menu.url === '/dashboard') ||
-             flatMenus.value.find((menu) => menu.url === url)
+      return flatMenus.value.find((menu) => normalizeMenuUrl(menu.url || '') === '/dashboard') ||
+             flatMenus.value.find((menu) => normalizeMenuUrl(menu.url || '') === url)
     }
-    return flatMenus.value.find((menu) => menu.url === url)
+    return flatMenus.value.find((menu) => normalizeMenuUrl(menu.url || '') === url)
   }
 
   // 메뉴 펼침/접힘 토글

@@ -1,12 +1,12 @@
-// 페이지 상태
-export type PageStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
+// 컨텐츠 상태
+export type ContentsStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 
-// 페이지 목록 DTO
-export interface PageListDto {
+// 컨텐츠 목록 DTO
+export interface ContentsListDto {
   id: number
   slug: string
   title: string
-  status: PageStatus
+  status: ContentsStatus
   parentId: number | null
   parentTitle: string | null
   sortOrder: number
@@ -15,8 +15,8 @@ export interface PageListDto {
   createdAt: string
 }
 
-// 페이지 상세 DTO
-export interface PageDto {
+// 컨텐츠 상세 DTO
+export interface ContentsDto {
   id: number
   siteCode: string
   slug: string
@@ -24,36 +24,36 @@ export interface PageDto {
   content: string | null
   metaDescription: string | null
   metaKeywords: string | null
-  status: PageStatus
+  status: ContentsStatus
   publishedAt: string | null
   parentId: number | null
   parentTitle: string | null
   sortOrder: number
-  children?: PageDto[]
+  children?: ContentsDto[]
   createdAt: string
   updatedAt: string
 }
 
-// 페이지 생성 요청
-export interface PageCreateRequest {
+// 컨텐츠 생성 요청
+export interface ContentsCreateRequest {
   slug: string
   title: string
   content?: string
   metaDescription?: string
   metaKeywords?: string
-  status?: PageStatus
+  status?: ContentsStatus
   parentId?: number | null
   sortOrder?: number
 }
 
-// 페이지 수정 요청
-export interface PageUpdateRequest {
+// 컨텐츠 수정 요청
+export interface ContentsUpdateRequest {
   slug: string
   title: string
   content?: string
   metaDescription?: string
   metaKeywords?: string
-  status?: PageStatus
+  status?: ContentsStatus
   parentId?: number | null
   sortOrder?: number
 }

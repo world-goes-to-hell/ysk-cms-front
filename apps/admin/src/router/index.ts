@@ -4,25 +4,26 @@ import { generateRoutesFromMenus } from './dynamicRoutes'
 import type { MenuItem } from '@/types/menu'
 
 // 기본 라우트 (동적 라우트 등록 전에 필요한 최소한의 라우트)
+// 참고: Vite base가 '/adm/'이므로 라우트 경로에서 /adm prefix 불필요
 const baseRoutes: RouteRecordRaw[] = [
   {
     path: '/',
-    redirect: '/adm/login',
-  },
-  {
-    path: '/adm',
     name: 'layout', // 동적 라우트 등록을 위한 이름
     component: DefaultLayout,
     meta: { requiresAuth: true },
+    redirect: '/dashboard',
     children: [
+      // 사이트 추가/수정 폼 페이지 (정적 라우트)
       {
-        path: '',
-        redirect: '/adm/dashboard',
+        path: 'sites/form',
+        name: 'site-form',
+        component: () => import('@/views/default/site/SiteFormView.vue'),
+        meta: { title: '사이트 등록/수정', requiresAuth: true },
       },
     ],
   },
   {
-    path: '/adm/login',
+    path: '/login',
     name: 'login',
     component: () => import('@/views/default/common/login/LoginView.vue'),
     meta: { title: '로그인', guest: true },
@@ -102,8 +103,8 @@ router.beforeEach((to, _from, next) => {
   const accessToken = localStorage.getItem('accessToken')
   const isAuthenticated = !!accessToken
 
-  // /adm 하위 경로는 모두 인증 필요 (로그인 페이지 제외)
-  const requiresAuth = to.path.startsWith('/adm') && to.path !== '/adm/login'
+  // 로그인 페이지 제외한 모든 경로는 인증 필요
+  const requiresAuth = to.path !== '/login'
 
   // 인증이 필요한 페이지
   if (requiresAuth && !isAuthenticated) {
@@ -113,7 +114,7 @@ router.beforeEach((to, _from, next) => {
 
   // 이미 로그인한 사용자가 로그인 페이지 접근 시
   if (to.meta.guest && isAuthenticated) {
-    next({ path: '/adm/dashboard' })
+    next({ path: '/dashboard' })
     return
   }
 
@@ -126,14 +127,14 @@ router.beforeEach((to, _from, next) => {
     if (!hasRequiredRoles(userRoles, requiredRoles)) {
       console.warn('[Router] 권한 없음:', to.path, '필요 권한:', requiredRoles, '사용자 권한:', userRoles)
       // 권한 없으면 대시보드로 리다이렉트 (또는 403 페이지)
-      next({ path: '/adm/dashboard' })
+      next({ path: '/dashboard' })
       return
     }
   }
 
-  // 동적 라우트가 등록되지 않았고, 인증된 사용자가 /adm 하위 페이지에 접근 시
+  // 동적 라우트가 등록되지 않았고, 인증된 사용자인 경우
   // 라우트가 not-registered(catch-all)로 매칭된 경우 경고 로그
-  if (isAuthenticated && to.path.startsWith('/adm') && to.name === 'not-registered') {
+  if (isAuthenticated && to.name === 'not-registered') {
     console.warn('[Router] 동적 라우트가 등록되지 않아 페이지를 찾을 수 없습니다:', to.path)
     console.warn('[Router] 동적 라우트 등록 상태:', dynamicRoutesRegistered)
   }

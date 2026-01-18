@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
+import SessionExtendDialog from '@/components/SessionExtendDialog.vue'
 </script>
 
 <template>
   <RouterView />
+  <!-- 세션 만료 경고 다이얼로그 -->
+  <SessionExtendDialog />
 </template>
 
 <style>

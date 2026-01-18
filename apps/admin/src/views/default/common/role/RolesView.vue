@@ -27,8 +27,8 @@ const formData = ref<CreateRoleRequest & { id?: number }>({
   description: '',
 })
 
-// 시스템 기본 역할 목록
-const systemRoles = ['SUPER_ADMIN', 'ADMIN', 'SITE_ADMIN', 'EDITOR', 'VIEWER']
+// 시스템 기본 역할 목록 (SUPER_ADMIN은 모든 권한 수정 가능하도록 제외)
+const systemRoles: string[] = []
 
 // 시스템 역할 여부
 const isSystemRole = (name: string) => systemRoles.includes(name)

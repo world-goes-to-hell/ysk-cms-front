@@ -2,8 +2,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import * as pageApi from '@/api/page'
-import type { PageListDto, PageDto, PageStatus } from '@/types/page'
+import * as contentsApi from '@/api/contents'
+import type { ContentsListDto, ContentsDto, ContentsStatus } from '@/types/contents'
 import Pagination from '@/components/common/Pagination.vue'
 
 const route = useRoute()
@@ -16,7 +16,7 @@ const currentSiteCode = computed(() => {
 
 // 상태
 const isLoading = ref(false)
-const pages = ref<PageListDto[]>([])
+const contentsList = ref<ContentsListDto[]>([])
 
 // 페이지네이션
 const pagination = ref({
@@ -28,7 +28,7 @@ const pagination = ref({
 
 // 검색/필터
 const searchQuery = ref('')
-const filterStatus = ref<PageStatus | ''>('')
+const filterStatus = ref<ContentsStatus | ''>('')
 
 // 미리보기 모달 상태
 const previewVisible = ref(false)
@@ -42,38 +42,38 @@ const statusOptions = [
   { value: 'ARCHIVED', label: '보관됨', color: '#E6A23C' },
 ]
 
-// 페이지 목록 조회
-const fetchPages = async () => {
+// 컨텐츠 목록 조회
+const fetchContents = async () => {
   isLoading.value = true
   try {
-    const response = await pageApi.getPages(currentSiteCode.value, pagination.value.page - 1, pagination.value.size)
+    const response = await contentsApi.getContents(currentSiteCode.value, pagination.value.page - 1, pagination.value.size)
     if (response.data.success && response.data.data) {
-      pages.value = response.data.data.content
+      contentsList.value = response.data.data.content
       pagination.value.total = response.data.data.totalElements
       pagination.value.totalPages = response.data.data.totalPages
     }
   } catch (error) {
-    console.error('페이지 목록 조회 실패:', error)
-    ElMessage.error('페이지 목록을 불러오는데 실패했습니다.')
+    console.error('컨텐츠 목록 조회 실패:', error)
+    ElMessage.error('컨텐츠 목록을 불러오는데 실패했습니다.')
   } finally {
     isLoading.value = false
   }
 }
 
-// 필터링된 페이지 목록
-const filteredPages = computed(() => {
-  let result = pages.value
+// 필터링된 컨텐츠 목록
+const filteredContents = computed(() => {
+  let result = contentsList.value
 
   if (searchQuery.value) {
     const keyword = searchQuery.value.toLowerCase()
-    result = result.filter(page =>
-      page.title.toLowerCase().includes(keyword) ||
-      page.slug.toLowerCase().includes(keyword)
+    result = result.filter(item =>
+      item.title.toLowerCase().includes(keyword) ||
+      item.slug.toLowerCase().includes(keyword)
     )
   }
 
   if (filterStatus.value) {
-    result = result.filter(page => page.status === filterStatus.value)
+    result = result.filter(item => item.status === filterStatus.value)
   }
 
   return result
@@ -82,20 +82,20 @@ const filteredPages = computed(() => {
 // 검색
 const onSearch = () => {
   pagination.value.page = 1
-  fetchPages()
+  fetchContents()
 }
 
 // 페이지 변경
 const onPageChange = (page: number) => {
   pagination.value.page = page
-  fetchPages()
+  fetchContents()
 }
 
 // 페이지 사이즈 변경
 const onSizeChange = (size: number) => {
   pagination.value.size = size
   pagination.value.page = 1
-  fetchPages()
+  fetchContents()
 }
 
 // 생성 페이지로 이동
@@ -105,17 +105,17 @@ const goToCreatePage = () => {
 }
 
 // 수정 페이지로 이동
-const goToEditPage = (page: PageListDto) => {
+const goToEditPage = (item: ContentsListDto) => {
   const basePath = route.path.replace(/\/$/, '')
-  router.push(`${basePath}/form/${page.id}`)
+  router.push(`${basePath}/form/${item.id}`)
 }
 
 // 삭제
-const handleDelete = async (page: PageListDto) => {
+const handleDelete = async (item: ContentsListDto) => {
   try {
     await ElMessageBox.confirm(
-      `"${page.title}" 페이지를 삭제하시겠습니까?`,
-      '페이지 삭제',
+      `"${item.title}" 컨텐츠를 삭제하시겠습니까?`,
+      '컨텐츠 삭제',
       {
         confirmButtonText: '삭제',
         cancelButtonText: '취소',
@@ -124,15 +124,15 @@ const handleDelete = async (page: PageListDto) => {
     )
 
     isLoading.value = true
-    const response = await pageApi.deletePage(currentSiteCode.value, page.id)
+    const response = await contentsApi.deleteContents(currentSiteCode.value, item.id)
     if (response.data.success) {
-      ElMessage.success('페이지가 삭제되었습니다.')
-      fetchPages()
+      ElMessage.success('컨텐츠가 삭제되었습니다.')
+      fetchContents()
     }
   } catch (error: any) {
     if (error !== 'cancel') {
-      console.error('페이지 삭제 실패:', error)
-      ElMessage.error('페이지 삭제에 실패했습니다.')
+      console.error('컨텐츠 삭제 실패:', error)
+      ElMessage.error('컨텐츠 삭제에 실패했습니다.')
     }
   } finally {
     isLoading.value = false
@@ -140,11 +140,11 @@ const handleDelete = async (page: PageListDto) => {
 }
 
 // 발행
-const handlePublish = async (page: PageListDto) => {
+const handlePublish = async (item: ContentsListDto) => {
   try {
     await ElMessageBox.confirm(
-      `"${page.title}" 페이지를 발행하시겠습니까?`,
-      '페이지 발행',
+      `"${item.title}" 컨텐츠를 발행하시겠습니까?`,
+      '컨텐츠 발행',
       {
         confirmButtonText: '발행',
         cancelButtonText: '취소',
@@ -153,15 +153,15 @@ const handlePublish = async (page: PageListDto) => {
     )
 
     isLoading.value = true
-    const response = await pageApi.publishPage(currentSiteCode.value, page.id)
+    const response = await contentsApi.publishContents(currentSiteCode.value, item.id)
     if (response.data.success) {
-      ElMessage.success('페이지가 발행되었습니다.')
-      fetchPages()
+      ElMessage.success('컨텐츠가 발행되었습니다.')
+      fetchContents()
     }
   } catch (error: any) {
     if (error !== 'cancel') {
-      console.error('페이지 발행 실패:', error)
-      ElMessage.error('페이지 발행에 실패했습니다.')
+      console.error('컨텐츠 발행 실패:', error)
+      ElMessage.error('컨텐츠 발행에 실패했습니다.')
     }
   } finally {
     isLoading.value = false
@@ -169,10 +169,10 @@ const handlePublish = async (page: PageListDto) => {
 }
 
 // 미리보기
-const handlePreview = async (page: PageListDto) => {
+const handlePreview = async (item: ContentsListDto) => {
   isLoading.value = true
   try {
-    const response = await pageApi.getPage(currentSiteCode.value, page.id)
+    const response = await contentsApi.getContentsById(currentSiteCode.value, item.id)
     if (response.data.success && response.data.data) {
       previewTitle.value = response.data.data.title
       previewContent.value = response.data.data.content || ''
@@ -187,7 +187,7 @@ const handlePreview = async (page: PageListDto) => {
 }
 
 // 상태 정보 가져오기
-const getStatusInfo = (status: PageStatus) => {
+const getStatusInfo = (status: ContentsStatus) => {
   return statusOptions.find((opt) => opt.value === status) || statusOptions[0]
 }
 
@@ -204,7 +204,7 @@ const formatDate = (dateStr: string | null) => {
 }
 
 onMounted(() => {
-  fetchPages()
+  fetchContents()
 })
 </script>
 
@@ -241,7 +241,7 @@ onMounted(() => {
           <i class="mdi mdi-check-circle-outline"></i>
         </div>
         <div class="stat-info">
-          <span class="stat-value">{{ pages.filter(p => p.status === 'PUBLISHED').length }}</span>
+          <span class="stat-value">{{ contentsList.filter(p => p.status === 'PUBLISHED').length }}</span>
           <span class="stat-label">발행됨</span>
         </div>
       </div>
@@ -250,7 +250,7 @@ onMounted(() => {
           <i class="mdi mdi-file-edit-outline"></i>
         </div>
         <div class="stat-info">
-          <span class="stat-value">{{ pages.filter(p => p.status === 'DRAFT').length }}</span>
+          <span class="stat-value">{{ contentsList.filter(p => p.status === 'DRAFT').length }}</span>
           <span class="stat-label">임시저장</span>
         </div>
       </div>
@@ -281,11 +281,11 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 페이지 목록 테이블 -->
-    <div v-loading="isLoading" class="pages-container">
-      <div v-if="filteredPages.length > 0" class="pages-table">
+    <!-- 컨텐츠 목록 테이블 -->
+    <div v-loading="isLoading" class="contents-container">
+      <div v-if="filteredContents.length > 0" class="contents-table">
         <div class="table-header">
-          <div class="col-info">페이지 정보</div>
+          <div class="col-info">컨텐츠 정보</div>
           <div class="col-slug">슬러그</div>
           <div class="col-status">상태</div>
           <div class="col-date">발행일</div>
@@ -294,22 +294,22 @@ onMounted(() => {
         </div>
 
         <div
-          v-for="page in filteredPages"
-          :key="page.id"
+          v-for="item in filteredContents"
+          :key="item.id"
           class="table-row"
         >
-          <!-- 페이지 정보 -->
+          <!-- 컨텐츠 정보 -->
           <div class="col-info">
-            <div class="page-icon">
+            <div class="contents-icon">
               <i class="mdi mdi-file-document-outline"></i>
             </div>
-            <div class="page-details">
-              <h3 class="page-title" @click="handlePreview(page)">
-                {{ page.title }}
+            <div class="contents-details">
+              <h3 class="contents-title" @click="handlePreview(item)">
+                {{ item.title }}
               </h3>
-              <div v-if="page.childCount > 0" class="page-badges">
+              <div v-if="item.childCount > 0" class="contents-badges">
                 <span class="badge children">
-                  <i class="mdi mdi-file-tree"></i> 하위 {{ page.childCount }}개
+                  <i class="mdi mdi-file-tree"></i> 하위 {{ item.childCount }}개
                 </span>
               </div>
             </div>
@@ -317,46 +317,46 @@ onMounted(() => {
 
           <!-- 슬러그 -->
           <div class="col-slug">
-            <code class="slug-code">/{{ page.slug }}</code>
+            <code class="slug-code">/{{ item.slug }}</code>
           </div>
 
           <!-- 상태 -->
           <div class="col-status">
             <span
               class="status-badge"
-              :class="page.status.toLowerCase()"
+              :class="item.status.toLowerCase()"
             >
-              {{ getStatusInfo(page.status).label }}
+              {{ getStatusInfo(item.status).label }}
             </span>
           </div>
 
           <!-- 발행일 -->
           <div class="col-date">
-            <span class="date-text">{{ formatDate(page.publishedAt) }}</span>
+            <span class="date-text">{{ formatDate(item.publishedAt) }}</span>
           </div>
 
           <!-- 작성일 -->
           <div class="col-date">
-            <span class="date-text">{{ formatDate(page.createdAt) }}</span>
+            <span class="date-text">{{ formatDate(item.createdAt) }}</span>
           </div>
 
           <!-- 관리 버튼 -->
           <div class="col-actions">
-            <button class="action-btn preview" title="미리보기" @click="handlePreview(page)">
+            <button class="action-btn preview" title="미리보기" @click="handlePreview(item)">
               <i class="mdi mdi-eye-outline"></i>
             </button>
-            <button class="action-btn edit" title="수정" @click="goToEditPage(page)">
+            <button class="action-btn edit" title="수정" @click="goToEditPage(item)">
               <i class="mdi mdi-pencil-outline"></i>
             </button>
             <button
-              v-if="page.status !== 'PUBLISHED'"
+              v-if="item.status !== 'PUBLISHED'"
               class="action-btn publish"
               title="발행"
-              @click="handlePublish(page)"
+              @click="handlePublish(item)"
             >
               <i class="mdi mdi-publish"></i>
             </button>
-            <button class="action-btn delete" title="삭제" @click="handleDelete(page)">
+            <button class="action-btn delete" title="삭제" @click="handleDelete(item)">
               <i class="mdi mdi-trash-can-outline"></i>
             </button>
           </div>
@@ -377,7 +377,7 @@ onMounted(() => {
       </div>
 
       <!-- 페이지네이션 -->
-      <div v-if="filteredPages.length > 0" class="pagination-wrapper">
+      <div v-if="filteredContents.length > 0" class="pagination-wrapper">
         <Pagination
           :current-page="pagination.page"
           :total-pages="pagination.totalPages"
@@ -626,15 +626,15 @@ onMounted(() => {
   font-size: 18px;
 }
 
-/* 페이지 테이블 */
-.pages-container {
+/* 컨텐츠 테이블 */
+.contents-container {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 16px;
   overflow: hidden;
 }
 
-.pages-table {
+.contents-table {
   width: 100%;
 }
 
@@ -670,14 +670,14 @@ onMounted(() => {
   background: var(--bg-tertiary);
 }
 
-/* 페이지 정보 */
+/* 컨텐츠 정보 */
 .col-info {
   display: flex;
   align-items: center;
   gap: 16px;
 }
 
-.page-icon {
+.contents-icon {
   width: 44px;
   height: 44px;
   display: flex;
@@ -688,16 +688,16 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-.page-icon .mdi {
+.contents-icon .mdi {
   font-size: 22px;
   color: #6366f1;
 }
 
-.page-details {
+.contents-details {
   min-width: 0;
 }
 
-.page-title {
+.contents-title {
   font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
@@ -706,11 +706,11 @@ onMounted(() => {
   transition: color 0.2s;
 }
 
-.page-title:hover {
+.contents-title:hover {
   color: #6366f1;
 }
 
-.page-badges {
+.contents-badges {
   display: flex;
   gap: 6px;
   margin-top: 6px;

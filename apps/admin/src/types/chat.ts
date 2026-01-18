@@ -48,6 +48,12 @@ export interface ChatRoomCreateRequest {
   participantIds: number[]
 }
 
+// 채팅방 초대 요청
+export interface ChatInviteRequest {
+  userIds: number[]
+  groupName?: string  // 1:1 → 그룹 전환 시 그룹 이름 (선택)
+}
+
 // 메시지 전송 요청
 export interface ChatMessageRequest {
   type: MessageType

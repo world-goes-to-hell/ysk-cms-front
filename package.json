@@ -17,6 +17,10 @@
     "build": "npm run build --workspaces",
     "build:admin": "npm run build --workspace=@ysk-cms/admin",
     "build:user": "npm run build --workspace=@ysk-cms/user",
+    "build:deploy": "npm run build:user && npm run build:admin && npm run merge:dist",
+    "merge:dist": "node scripts/merge-dist.js",
+    "deploy": "npm run build:deploy && firebase deploy",
+    "deploy:preview": "npm run build:deploy && firebase hosting:channel:deploy preview",
     "lint": "eslint . --fix --cache",
     "format": "prettier --write --experimental-cli \"apps/*/src/**\" \"packages/*/src/**\""
   },

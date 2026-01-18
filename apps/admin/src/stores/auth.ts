@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { login as loginApi, getCurrentUser, logout as logoutApi } from '@/api/auth'
 import { getActiveMenuTree } from '@/api/menu'
 import { registerDynamicRoutes } from '@/router'
+import { useSiteStore } from '@/stores/site'
 import type { UserInfo, LoginRequest } from '@/types/auth'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -41,7 +42,7 @@ export const useAuthStore = defineStore('auth', () => {
 
     try {
       const response = await loginApi(credentials)
-      const { accessToken, refreshToken, user: userInfo } = response.data.data
+      const { accessToken, refreshToken, user: userInfo, site: siteInfo } = response.data.data
 
       // 토큰 저장
       localStorage.setItem('accessToken', accessToken)
@@ -51,9 +52,13 @@ export const useAuthStore = defineStore('auth', () => {
       // 상태 업데이트
       user.value = userInfo
 
+      // 사이트 정보 저장
+      const siteStore = useSiteStore()
+      siteStore.setSite(siteInfo)
+
       // 메뉴 로드 및 동적 라우트 등록
       try {
-        const menuResponse = await getActiveMenuTree('main')
+        const menuResponse = await getActiveMenuTree(siteInfo.code)
         if (menuResponse.data.data) {
           registerDynamicRoutes(menuResponse.data.data)
         }
@@ -75,7 +80,10 @@ export const useAuthStore = defineStore('auth', () => {
   const logout = () => {
     logoutApi()
     user.value = null
-    router.push('/adm/login')
+    // 사이트 정보도 초기화
+    const siteStore = useSiteStore()
+    siteStore.clearSite()
+    router.push('/login')
   }
 
   // 사용자 정보 새로고침

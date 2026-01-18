@@ -4,7 +4,7 @@ import { ElNotification } from 'element-plus'
 import { h } from 'vue'
 import * as chatApi from '@/api/chat'
 import { wsService } from '@/services/websocket'
-import type { ChatRoom, ChatMessage, ChatRoomUser, ChatMessageRequest, TypingNotification, NewMessageNotification } from '@/types/chat'
+import type { ChatRoom, ChatMessage, ChatRoomUser, ChatMessageRequest, TypingNotification, NewMessageNotification, ChatInviteRequest } from '@/types/chat'
 import { useAuthStore } from './auth'
 
 export const useChatStore = defineStore('chat', () => {
@@ -314,6 +314,34 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  async function inviteUsers(userIds: number[], groupName?: string): Promise<ChatRoom | null> {
+    if (!currentRoom.value) return null
+
+    try {
+      const request: ChatInviteRequest = {
+        userIds,
+        groupName
+      }
+      const response = await chatApi.inviteUsers(currentRoom.value.id, request)
+      const room = response.data.data
+
+      // 1:1 채팅방에서 초대한 경우 새 그룹 채팅방이 생성됨
+      if (currentRoom.value.type === 'PRIVATE') {
+        await fetchRooms()
+        await openRoom(room.id)
+      } else {
+        // 그룹 채팅방은 현재 방에 사용자가 추가됨
+        currentRoom.value.participants = room.participants
+        await fetchRooms()
+      }
+
+      return room
+    } catch (error) {
+      console.error('Failed to invite users:', error)
+      throw error
+    }
+  }
+
   function togglePanel() {
     isPanelOpen.value = !isPanelOpen.value
   }
@@ -368,6 +396,7 @@ export const useChatStore = defineStore('chat', () => {
     sendMessage,
     sendTyping,
     leaveCurrentRoom,
+    inviteUsers,
     togglePanel,
     openPanel,
     closePanel,

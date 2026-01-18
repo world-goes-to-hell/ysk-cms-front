@@ -1,0 +1,212 @@
+/* ==================== SessionExtendDialog 컴포넌트 ==================== */
+
+/* 다이얼로그 오버레이 */
+.session-extend-dialog {
+  --dialog-bg: #ffffff;
+  --text-primary: #1f2937;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --warning-color: #f59e0b;
+  --warning-bg: rgba(245, 158, 11, 0.1);
+  --danger-color: #ef4444;
+  --danger-bg: rgba(239, 68, 68, 0.1);
+  --border-color: #e5e7eb;
+  --btn-secondary-bg: #f3f4f6;
+  --btn-secondary-hover: #e5e7eb;
+}
+
+/* 다크 모드 */
+html.dark .session-extend-dialog {
+  --dialog-bg: #1e293b;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --warning-bg: rgba(245, 158, 11, 0.15);
+  --danger-bg: rgba(239, 68, 68, 0.15);
+  --border-color: #334155;
+  --btn-secondary-bg: #334155;
+  --btn-secondary-hover: #475569;
+}
+
+/* 다이얼로그 컨테이너 */
+.session-extend-dialog.el-dialog {
+  background: var(--dialog-bg);
+  border-radius: 20px;
+  box-shadow:
+    0 25px 50px -12px rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  border: none;
+}
+
+/* 다이얼로그 헤더 */
+.session-extend-dialog .el-dialog__header {
+  display: none;
+}
+
+/* 다이얼로그 바디 */
+.session-extend-dialog .el-dialog__body {
+  padding: 0;
+}
+
+/* 컨텐츠 영역 */
+.session-extend-dialog .session-dialog-content {
+  text-align: center;
+  padding: 40px 32px 32px;
+  position: relative;
+}
+
+/* 상단 경고 배너 */
+.session-extend-dialog .session-dialog-content::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #f59e0b, #ef4444, #f59e0b);
+  background-size: 200% 100%;
+  animation: warningGradient 2s ease infinite;
+}
+
+@keyframes warningGradient {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* 경고 아이콘 컨테이너 */
+.session-extend-dialog .warning-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 24px;
+  background: var(--warning-bg);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  animation: iconPulse 2s ease-in-out infinite;
+}
+
+@keyframes iconPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 15px rgba(245, 158, 11, 0);
+  }
+}
+
+.session-extend-dialog .warning-icon svg {
+  width: 40px;
+  height: 40px;
+  color: var(--warning-color);
+}
+
+/* 메시지 텍스트 */
+.session-extend-dialog .message {
+  font-size: 16px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-bottom: 28px;
+  font-weight: 400;
+}
+
+/* 타이머 영역 */
+.session-extend-dialog .timer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 24px;
+  background: var(--danger-bg);
+  border-radius: 16px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+/* 시간 표시 */
+.session-extend-dialog .time {
+  font-size: 48px;
+  font-weight: 700;
+  color: var(--danger-color);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -2px;
+  line-height: 1;
+  animation: timePulse 1s ease-in-out infinite;
+}
+
+@keyframes timePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* 라벨 텍스트 */
+.session-extend-dialog .label {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* 다이얼로그 푸터 */
+.session-extend-dialog .el-dialog__footer {
+  padding: 0 32px 32px;
+  border-top: none;
+  background: var(--dialog-bg);
+}
+
+/* 버튼 컨테이너 */
+.session-extend-dialog .dialog-footer {
+  display: flex;
+  gap: 12px;
+}
+
+/* 공통 버튼 스타일 */
+.session-extend-dialog .dialog-footer .el-button {
+  flex: 1;
+  height: 48px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+/* 로그아웃 버튼 */
+.session-extend-dialog .dialog-footer .el-button:not(.el-button--primary) {
+  background: var(--btn-secondary-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.session-extend-dialog .dialog-footer .el-button:not(.el-button--primary):hover {
+  background: var(--btn-secondary-hover);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+/* 세션 연장 버튼 */
+.session-extend-dialog .dialog-footer .el-button--primary {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border: none;
+  color: white;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+}
+
+.session-extend-dialog .dialog-footer .el-button--primary:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
+}
+
+.session-extend-dialog .dialog-footer .el-button--primary:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+}
+
+/* 로딩 상태 */
+.session-extend-dialog .dialog-footer .el-button--primary.is-loading {
+  opacity: 0.8;
+}

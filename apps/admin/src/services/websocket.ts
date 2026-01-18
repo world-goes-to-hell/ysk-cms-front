@@ -36,6 +36,15 @@ export class WebSocketService {
 
       this.client = new Client({
         webSocketFactory: () => new SockJS(`${this.baseUrl}/ws/chat`),
+        // 재연결 시 최신 토큰 사용
+        beforeConnect: () => {
+          const currentToken = localStorage.getItem('accessToken')
+          if (this.client && currentToken) {
+            this.client.connectHeaders = {
+              Authorization: `Bearer ${currentToken}`
+            }
+          }
+        },
         connectHeaders: {
           Authorization: `Bearer ${token}`
         },

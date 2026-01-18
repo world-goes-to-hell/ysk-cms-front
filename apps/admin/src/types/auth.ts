@@ -2,6 +2,7 @@
 export interface LoginRequest {
   username: string
   password: string
+  siteCode: string
 }
 
 // 사용자 정보
@@ -13,6 +14,13 @@ export interface UserInfo {
   roles: string[]
 }
 
+// 사이트 정보
+export interface SiteInfo {
+  id: number
+  code: string
+  name: string
+}
+
 // 로그인 응답
 export interface LoginResponse {
   accessToken: string
@@ -20,6 +28,7 @@ export interface LoginResponse {
   tokenType: string
   expiresIn: number
   user: UserInfo
+  site: SiteInfo
 }
 
 // 토큰 갱신 요청
